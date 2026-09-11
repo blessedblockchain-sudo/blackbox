@@ -7,9 +7,11 @@ skip-lint = false
 
 [programs.localnet]
 spike = "94gGoaBYDU4B9dmxEoJFVST8gszK5YbUqoh7HCxUAbhp"
+blackbox = "BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27"
 
 [programs.devnet]
 spike = "94gGoaBYDU4B9dmxEoJFVST8gszK5YbUqoh7HCxUAbhp"
+blackbox = "BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27"
 
 [registry]
 url = "https://api.apr.dev"

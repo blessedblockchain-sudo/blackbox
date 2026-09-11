@@ -117,6 +117,17 @@ pub mod blackbox {
         instructions::settle::close_round(ctx)
     }
 
+    // ---- local development: mock price feeds (accepted only with `local-oracle`)
+    pub fn init_mock_feed(ctx: Context<InitMockFeed>, feed_id: u32, raw_price: i64, decimals: u8) -> Result<()> {
+        instructions::mock::init_mock_feed(ctx, feed_id, raw_price, decimals)
+    }
+    pub fn set_mock_feed(ctx: Context<SetMockFeed>, raw_price: i64, decimals: u8) -> Result<()> {
+        instructions::mock::set_mock_feed(ctx, raw_price, decimals)
+    }
+    pub fn delegate_mock_feed(ctx: Context<DelegateMockFeed>, feed_id: u32) -> Result<()> {
+        instructions::mock::delegate_mock_feed(ctx, feed_id)
+    }
+
     // ---- L1: hall of fame
     pub fn init_hall(ctx: Context<InitHall>) -> Result<()> {
         instructions::settle::init_hall(ctx)

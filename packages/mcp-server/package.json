@@ -1,0 +1,14 @@
+{
+  "name": "@blackbox/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "bin": { "blackbox-mcp": "src/index.ts" },
+  "scripts": { "start": "ts-node --transpile-only src/index.ts", "typecheck": "tsc --noEmit -p ." },
+  "dependencies": {
+    "@blackbox/sdk": "workspace:*",
+    "@blackbox/compiler": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.76"
+  }
+}

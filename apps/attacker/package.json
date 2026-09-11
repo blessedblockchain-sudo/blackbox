@@ -1,0 +1,9 @@
+{
+  "name": "@blackbox/attacker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "bin": { "bx-attack": "src/cli.ts" },
+  "scripts": { "start": "ts-node --transpile-only src/cli.ts", "typecheck": "tsc --noEmit -p ." },
+  "dependencies": { "@blackbox/sdk": "workspace:*" }
+}

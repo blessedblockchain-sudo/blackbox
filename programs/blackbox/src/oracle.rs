@@ -25,7 +25,10 @@ pub struct OraclePrice {
 /// the feed (we do not trust the sign of the stored exponent).
 pub fn read_price(info: &AccountInfo, expected: &Pubkey, decimals: u8, now: i64) -> Result<OraclePrice> {
     require_keys_eq!(info.key(), *expected, BlackboxError::BadOracle);
+    #[cfg(not(feature = "local-oracle"))]
     require_keys_eq!(*info.owner, ORACLE_PROGRAM_ID, BlackboxError::BadOracle);
+    #[cfg(feature = "local-oracle")]
+    require!(*info.owner == ORACLE_PROGRAM_ID || *info.owner == crate::ID, BlackboxError::BadOracle);
     let data = info.try_borrow_data()?;
     require!(data.len() >= 101, BlackboxError::BadOracle);
     let tag = data[40];
@@ -54,4 +57,26 @@ pub fn scale_price(raw: i64, decimals: u8) -> Result<i64> {
     require!(out > 0 && out <= i64::MAX as i128, BlackboxError::BadOracle);
     let _ = USDC_SCALE;
     Ok(out as i64)
+}
+
+/// Size of a Pyth Lazer PriceUpdateV2 account as pushed by MagicBlock.
+pub const PRICE_ACCOUNT_LEN: usize = 134;
+/// Offsets within the account (Full verification level).
+pub const OFF_TAG: usize = 40;
+pub const OFF_FEED_ID: usize = 41;
+pub const OFF_PRICE: usize = 73;
+pub const OFF_CONF: usize = 81;
+pub const OFF_EXPO: usize = 89;
+pub const OFF_PUBLISH: usize = 93;
+
+/// Write a price into a mock feed account using the real layout.
+pub fn write_mock(data: &mut [u8], feed_id: u32, raw_price: i64, decimals: u8, publish_time: i64) -> Result<()> {
+    require!(data.len() >= PRICE_ACCOUNT_LEN, BlackboxError::BadOracle);
+    data[OFF_TAG] = 1;
+    data[OFF_FEED_ID..OFF_FEED_ID + 4].copy_from_slice(&feed_id.to_le_bytes());
+    data[OFF_PRICE..OFF_PRICE + 8].copy_from_slice(&raw_price.to_le_bytes());
+    data[OFF_CONF..OFF_CONF + 8].copy_from_slice(&0u64.to_le_bytes());
+    data[OFF_EXPO..OFF_EXPO + 4].copy_from_slice(&(decimals as i32).to_le_bytes());
+    data[OFF_PUBLISH..OFF_PUBLISH + 8].copy_from_slice(&publish_time.to_le_bytes());
+    Ok(())
 }

@@ -70,9 +70,10 @@ pub enum Op {
     Mld = 33,
     /// Store top into memory slot i (u8) (pops).
     Mst = 34,
-    /// Open/increase long on market m (u8) sized as bps (u16) of equity.
+    /// Target a long on market m (u8) of bps (u16) of buying power
+    /// (10_000 = equity x the market's max leverage).
     Long = 35,
-    /// Open/increase short on market m (u8) sized as bps (u16) of equity.
+    /// Target a short on market m (u8), same sizing as `Long`.
     Short = 36,
     /// Close market m (u8).
     Close = 37,

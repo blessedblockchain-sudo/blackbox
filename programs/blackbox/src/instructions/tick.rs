@@ -265,6 +265,10 @@ fn apply_action(
     equity: i64,
     n: usize,
 ) -> Result<()> {
+    let mut levs = [1i128; MAX_MARKETS];
+    for (i, m) in ms.iter().enumerate().take(n) {
+        levs[i] = m.max_leverage.max(1) as i128;
+    }
     let mut trade = |i: usize, target: i128, position: &mut Position| -> Result<()> {
         let other = other_notional(&position.legs, i);
         match perps::trade_to_target(&mut ms[i], &mut position.legs[i], target, equity, other) {
@@ -296,8 +300,9 @@ fn apply_action(
         bxvm::Action::Long { market, size_bps } | bxvm::Action::Short { market, size_bps } => {
             let i = market as usize;
             if i < n {
+                // size_bps is a fraction of buying power: 10_000 = equity * max_leverage.
                 let sign: i128 = if matches!(action, bxvm::Action::Long { .. }) { 1 } else { -1 };
-                let target = (equity.max(0) as i128 * size_bps as i128 / BPS as i128) * sign;
+                let target = (equity.max(0) as i128 * levs[i] * size_bps as i128 / BPS as i128) * sign;
                 trade(i, target, position)?;
             }
         }
@@ -375,12 +380,13 @@ pub fn schedule_clock(ctx: Context<ScheduleClock>, task_id: i64) -> Result<()> {
 pub struct ScheduleEntrantTick<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    #[account(seeds = [ROUND_SEED, &round.id.to_le_bytes()], bump = round.bump)]
+    /// Writable: the scheduled tick writes it, and a CPI cannot escalate privileges.
+    #[account(mut, seeds = [ROUND_SEED, &round.id.to_le_bytes()], bump = round.bump)]
     pub round: Box<Account<'info, Round>>,
     /// CHECK: scoreboard PDA (only its key is needed)
     #[account(mut, seeds = [SCOREBOARD_SEED, round.key().as_ref()], bump)]
     pub scoreboard: UncheckedAccount<'info>,
-    #[account(seeds = [ENTRANT_SEED, round.key().as_ref(), entrant.owner.as_ref()], bump = entrant.bump)]
+    #[account(mut, seeds = [ENTRANT_SEED, round.key().as_ref(), entrant.owner.as_ref()], bump = entrant.bump)]
     pub entrant: Box<Account<'info, Entrant>>,
     /// CHECK: strategy PDA (private; only its key is needed here)
     #[account(seeds = [STRATEGY_SEED, round.key().as_ref(), entrant.owner.as_ref()], bump)]

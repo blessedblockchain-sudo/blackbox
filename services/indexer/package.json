@@ -1,0 +1,8 @@
+{
+  "name": "@blackbox/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": { "start": "ts-node --transpile-only src/index.ts", "typecheck": "tsc --noEmit -p ." },
+  "dependencies": { "@blackbox/sdk": "workspace:*" }
+}

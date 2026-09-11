@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blackbox": {
+      "command": "node",
+      "args": ["packages/mcp-server/bin/blackbox-mcp.js"],
+      "env": {
+        "BLACKBOX_CLUSTER": "local",
+        "BLACKBOX_AGENT_NAME": "claude"
+      }
+    }
+  }
+}

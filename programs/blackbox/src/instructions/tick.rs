@@ -92,33 +92,11 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
     }
     let round_key = round_info.key();
     let n = round.n_markets as usize;
-    require!(ctx.remaining_accounts.len() >= 2 * n, BlackboxError::BadMarketIndex);
-    let now = Clock::get()?.unix_timestamp;
     let tick = round.tick;
+    let now = Clock::get()?.unix_timestamp;
 
-    // 1) Markets: refresh indicators once per tick (first entrant to arrive does it).
-    let mut loaders: Vec<AccountLoader<'info, Market>> = Vec::with_capacity(n);
-    for i in 0..n {
-        let m_info = &ctx.remaining_accounts[2 * i];
-        let f_info = &ctx.remaining_accounts[2 * i + 1];
-        let loader = AccountLoader::<Market>::try_from(m_info)?;
-        {
-            let mut m = loader.load_mut()?;
-            require_keys_eq!(m.round, round_key, BlackboxError::RoundMismatch);
-            require!(m.index as usize == i, BlackboxError::BadMarketIndex);
-            if m.last_tick < tick || m.mark == 0 {
-                let feed = m.feed;
-                let decimals = m.decimals;
-                let px = oracle::read_price(f_info, &feed, decimals, now)?;
-                perps::update_indicators(&mut m, px.price, tick, px.publish_time)?;
-                if tick > 0 && tick % FUNDING_PERIOD_TICKS == 0 && m.last_funding_tick < tick {
-                    perps::accrue_funding(&mut m, FUNDING_RATE_BPS_AT_FULL_SKEW)?;
-                    m.last_funding_tick = tick;
-                }
-            }
-        }
-        loaders.push(loader);
-    }
+    // 1) Markets: refresh indicators once per tick (first tick to arrive does it).
+    let loaders = load_markets(ctx.remaining_accounts, &round_key, n, tick, now, true)?;
     let mut ms: Vec<std::cell::RefMut<Market>> = Vec::with_capacity(n);
     for l in loaders.iter() {
         ms.push(l.load_mut()?);
@@ -137,76 +115,45 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
     require_keys_eq!(position.owner, entrant.owner, BlackboxError::OwnerMismatch);
     require_keys_eq!(strategy.owner, entrant.owner, BlackboxError::OwnerMismatch);
     require_keys_eq!(position.round, round_key, BlackboxError::RoundMismatch);
-
-    let mut marks = [0i64; MAX_MARKETS];
-    let mut findex = [0i64; MAX_MARKETS];
-    let mut maint = [0u16; MAX_MARKETS];
-    for i in 0..n {
-        marks[i] = ms[i].mark;
-        findex[i] = ms[i].funding_index;
-        maint[i] = ms[i].maintenance_bps;
+    // At most one execution per tick: tick_entrant is permissionless, and a
+    // rival replaying it would re-run the strategy against its own memory.
+    if position.ran_tick == tick + 1 {
+        return Ok(());
     }
+    position.ran_tick = tick + 1;
 
-    let mut equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
-
-    // 3) Run the strategy (only if alive, funded, and it has code).
-    if entrant.alive && position.liquidated == 0 && position.margin > 0 && strategy.len > 0 {
-        // Free margin = equity - Σ size_i / max_leverage_i (initial margin in use).
-        let mut used: i128 = 0;
-        for i in 0..n {
-            if position.legs[i].side != 0 {
-                used += position.legs[i].size as i128 / (ms[i].max_leverage.max(1) as i128);
-            }
-        }
-        let free = (equity as i128 - used).clamp(0, i64::MAX as i128) as i64;
-        let res = {
-            let refs: Vec<&Market> = ms.iter().map(|m| &**m).collect();
-            let host = TickHost {
-                markets: &refs,
-                legs: &position.legs,
-                equity,
-                free_margin: free,
-                tick,
-                rand: TickHost::derive_rand(&round.vrf_seed, &entrant.owner, tick),
-            };
-            let step_limit = strategy.step_limit.min(round.step_limit).max(1);
-            bxvm::execute(&strategy.bytecode[..strategy.len as usize], &host, &mut position.mem, step_limit)
+    let active =entrant.alive && position.liquidated == 0 && position.margin > 0 && strategy.len > 0;
+    let mut no_fees = 0u64;
+    let out = {
+        let mut book = BookMut {
+            legs: &mut position.legs,
+            mem: &mut position.mem,
+            realized: &mut position.realized_pnl,
+            trades: &mut position.trade_count,
+            fee_bps: 0,
+            fees: &mut no_fees,
+            margin: position.margin,
         };
-        position.last_steps = res.steps;
-        if let Some(f) = res.fault {
-            position.last_fault = f as u8 + 1;
-            position.last_fault_pc = res.pc;
-        } else {
-            position.last_fault = 0;
-            position.last_fault_pc = 0;
-            for action in res.actions() {
-                apply_action(action, &mut ms, position, equity, n)?;
-                equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
-            }
-        }
-    }
-
-    // 4) Mark to market, maintenance check, liquidation.
-    equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
-    let (_, maint_req) = perps::notional_and_maintenance(&position.legs, &maint);
-    if position.liquidated == 0 && position.margin > 0 && (equity as i128) < maint_req {
-        for i in 0..n {
-            if position.legs[i].side != 0 {
-                let r = perps::trade_to_target(&mut ms[i], &mut position.legs[i], 0, equity, 0)?;
-                position.realized_pnl = position.realized_pnl.saturating_add(r.realized_delta);
-            }
-        }
-        equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
+        run_book(
+            &mut ms,
+            &mut book,
+            if active { Some(&strategy.bytecode[..strategy.len as usize]) } else { None },
+            strategy.step_limit.min(round.step_limit).max(1),
+            tick,
+            TickHost::derive_rand(&round.vrf_seed, &entrant.owner, tick),
+            position.liquidated == 0,
+        )?
+    };
+    position.last_steps = out.steps;
+    position.last_fault = out.fault;
+    position.last_fault_pc = out.fault_pc;
+    if out.liquidated {
         position.liquidated = 1;
         entrant.alive = false;
-        if equity < 0 {
-            // Vault absorbs the shortfall.
-            position.realized_pnl = -(position.margin as i64);
-            equity = 0;
-        }
     }
+    let equity = out.equity;
 
-    // 5) Rolling Sharpe accumulators (per-tick return, scaled).
+    // 3) Rolling Sharpe accumulators (per-tick return, scaled) and blind pricing.
     if position.last_equity > 0 {
         let r = ((equity as i128 - position.last_equity as i128) * USDC_SCALE as i128 / position.last_equity as i128) as i64;
         position.sum_ret = position.sum_ret.saturating_add(r);
@@ -217,18 +164,19 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
     if equity > position.peak_equity {
         position.peak_equity = equity;
     }
+    entrant.fee_price_bps = blind_price(position.sum_ret, position.sum_ret_sq, position.ret_n, round.license_fee_min_bps, round.license_fee_max_bps);
     let trades = position.trade_count;
     drop(pos_ref);
     drop(strategy);
     drop(ms);
 
-    // 6) Persist the entrant.
+    // 4) Persist the entrant.
     {
         let mut d = entrant_info.try_borrow_mut_data()?;
         entrant.try_serialize(&mut &mut d[..])?;
     }
 
-    // 7) Scoreboard: public equity, alive, trades (no positions, no code).
+    // 5) Scoreboard: public equity, alive, trades (no positions, no code).
     {
         let mut sb = ctx.accounts.scoreboard.load_mut()?;
         require_keys_eq!(sb.round, round_key, BlackboxError::RoundMismatch);
@@ -256,26 +204,154 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
     Ok(())
 }
 
-/// Apply one VM action to the position. Rejected increases (leverage or OI
-/// cap) are skipped; they never fault the tick.
-fn apply_action(
-    action: bxvm::Action,
-    ms: &mut [std::cell::RefMut<Market>],
-    position: &mut Position,
-    equity: i64,
+/// Load (and optionally refresh from the oracle) the round's markets from
+/// `remaining = [market_0, feed_0, market_1, feed_1, ...]`.
+pub(crate) fn load_markets<'info>(
+    remaining: &'info [AccountInfo<'info>],
+    round_key: &Pubkey,
     n: usize,
-) -> Result<()> {
+    tick: u64,
+    now: i64,
+    refresh: bool,
+) -> Result<Vec<AccountLoader<'info, Market>>> {
+    require!(remaining.len() >= 2 * n, BlackboxError::BadMarketIndex);
+    let mut loaders: Vec<AccountLoader<'info, Market>> = Vec::with_capacity(n);
+    for i in 0..n {
+        let loader = AccountLoader::<Market>::try_from(&remaining[2 * i])?;
+        {
+            let mut m = loader.load_mut()?;
+            require_keys_eq!(m.round, *round_key, BlackboxError::RoundMismatch);
+            require!(m.index as usize == i, BlackboxError::BadMarketIndex);
+            if refresh && (m.last_tick < tick || m.mark == 0) {
+                let feed = m.feed;
+                let decimals = m.decimals;
+                let px = oracle::read_price(&remaining[2 * i + 1], &feed, decimals, now)?;
+                perps::update_indicators(&mut m, px.price, tick, px.publish_time)?;
+                if tick > 0 && tick % FUNDING_PERIOD_TICKS == 0 && m.last_funding_tick < tick {
+                    perps::accrue_funding(&mut m, FUNDING_RATE_BPS_AT_FULL_SKEW)?;
+                    m.last_funding_tick = tick;
+                }
+            }
+            require!(m.mark > 0, BlackboxError::BadOracle);
+        }
+        loaders.push(loader);
+    }
+    Ok(loaders)
+}
+
+/// A mutable view of a trading book (an entrant's Position or a License).
+pub(crate) struct BookMut<'a> {
+    pub legs: &'a mut [Leg; MAX_MARKETS],
+    pub mem: &'a mut [i64; MEM_SLOTS],
+    pub realized: &'a mut i64,
+    pub trades: &'a mut u32,
+    /// License fee charged on traded notional (0 for an entrant's own book).
+    pub fee_bps: u16,
+    pub fees: &'a mut u64,
+    pub margin: u64,
+}
+
+pub(crate) struct BookOutcome {
+    pub equity: i64,
+    pub steps: u32,
+    pub fault: u8,
+    pub fault_pc: u16,
+    pub liquidated: bool,
+}
+
+/// One tick of a book: run the bytecode (if any), apply its actions, mark to
+/// market, and liquidate below maintenance.
+pub(crate) fn run_book(
+    ms: &mut [std::cell::RefMut<Market>],
+    book: &mut BookMut,
+    bytecode: Option<&[u8]>,
+    step_limit: u32,
+    tick: u64,
+    rand: i64,
+    can_liquidate: bool,
+) -> Result<BookOutcome> {
+    let n = ms.len();
+    let mut marks = [0i64; MAX_MARKETS];
+    let mut findex = [0i64; MAX_MARKETS];
+    let mut maint = [0u16; MAX_MARKETS];
+    for i in 0..n {
+        marks[i] = ms[i].mark;
+        findex[i] = ms[i].funding_index;
+        maint[i] = ms[i].maintenance_bps;
+    }
+    let mut equity = perps::equity(book.margin, *book.realized, book.legs, &marks, &findex)?;
+    let mut out = BookOutcome { equity, steps: 0, fault: 0, fault_pc: 0, liquidated: false };
+
+    if let Some(code) = bytecode {
+        // Free margin = equity - Σ size_i / max_leverage_i (initial margin in use).
+        let mut used: i128 = 0;
+        for i in 0..n {
+            if book.legs[i].side != 0 {
+                used += book.legs[i].size as i128 / (ms[i].max_leverage.max(1) as i128);
+            }
+        }
+        let free = (equity as i128 - used).clamp(0, i64::MAX as i128) as i64;
+        let res = {
+            let refs: Vec<&Market> = ms.iter().map(|m| &**m).collect();
+            let host = TickHost { markets: &refs, legs: book.legs, equity, free_margin: free, tick, rand };
+            bxvm::execute(code, &host, book.mem, step_limit)
+        };
+        out.steps = res.steps;
+        if let Some(f) = res.fault {
+            out.fault = f as u8 + 1;
+            out.fault_pc = res.pc;
+        } else {
+            for action in res.actions() {
+                apply_action(action, ms, book, equity, n)?;
+                equity = perps::equity(book.margin, *book.realized, book.legs, &marks, &findex)?;
+            }
+        }
+    }
+
+    equity = perps::equity(book.margin, *book.realized, book.legs, &marks, &findex)?;
+    let (_, maint_req) = perps::notional_and_maintenance(book.legs, &maint);
+    if can_liquidate && book.margin > 0 && (equity as i128) < maint_req {
+        for i in 0..n {
+            if book.legs[i].side != 0 {
+                let r = perps::trade_to_target(&mut ms[i], &mut book.legs[i], 0, equity, 0)?;
+                *book.realized = book.realized.saturating_add(r.realized_delta);
+            }
+        }
+        equity = perps::equity(book.margin, *book.realized, book.legs, &marks, &findex)?;
+        out.liquidated = true;
+        if equity < 0 {
+            // The vault absorbs the shortfall.
+            *book.realized = -(book.margin as i64);
+            equity = 0;
+        }
+    }
+    out.equity = equity;
+    Ok(out)
+}
+
+/// Apply one VM action to a book. Rejected increases (leverage or OI cap) are
+/// skipped; they never fault the tick. License books pay `fee_bps` on traded
+/// notional, accrued for the author and charged against realized PnL.
+fn apply_action(action: bxvm::Action, ms: &mut [std::cell::RefMut<Market>], book: &mut BookMut, equity: i64, n: usize) -> Result<()> {
     let mut levs = [1i128; MAX_MARKETS];
     for (i, m) in ms.iter().enumerate().take(n) {
         levs[i] = m.max_leverage.max(1) as i128;
     }
-    let mut trade = |i: usize, target: i128, position: &mut Position| -> Result<()> {
-        let other = other_notional(&position.legs, i);
-        match perps::trade_to_target(&mut ms[i], &mut position.legs[i], target, equity, other) {
+    let fee_bps = book.fee_bps as i128;
+    let mut trade = |i: usize, target: i128, book: &mut BookMut| -> Result<()> {
+        let other = other_notional(book.legs, i);
+        let before = book.legs[i].size as i128 * book.legs[i].side as i128;
+        match perps::trade_to_target(&mut ms[i], &mut book.legs[i], target, equity, other) {
             Ok(r) => {
-                position.realized_pnl = position.realized_pnl.saturating_add(r.realized_delta);
+                *book.realized = book.realized.saturating_add(r.realized_delta);
                 if r.traded {
-                    position.trade_count = position.trade_count.saturating_add(1);
+                    *book.trades = book.trades.saturating_add(1);
+                    if fee_bps > 0 {
+                        let after = book.legs[i].size as i128 * book.legs[i].side as i128;
+                        let fee = ((after - before).abs() * fee_bps / BPS as i128).clamp(0, i64::MAX as i128) as i64;
+                        *book.fees = book.fees.saturating_add(fee as u64);
+                        *book.realized = book.realized.saturating_sub(fee);
+                    }
                 }
                 Ok(())
             }
@@ -286,15 +362,15 @@ fn apply_action(
     match action {
         bxvm::Action::CloseAll => {
             for i in 0..n {
-                if position.legs[i].side != 0 {
-                    trade(i, 0, position)?;
+                if book.legs[i].side != 0 {
+                    trade(i, 0, book)?;
                 }
             }
         }
         bxvm::Action::Close { market } => {
             let i = market as usize;
-            if i < n && position.legs[i].side != 0 {
-                trade(i, 0, position)?;
+            if i < n && book.legs[i].side != 0 {
+                trade(i, 0, book)?;
             }
         }
         bxvm::Action::Long { market, size_bps } | bxvm::Action::Short { market, size_bps } => {
@@ -303,7 +379,7 @@ fn apply_action(
                 // size_bps is a fraction of buying power: 10_000 = equity * max_leverage.
                 let sign: i128 = if matches!(action, bxvm::Action::Long { .. }) { 1 } else { -1 };
                 let target = (equity.max(0) as i128 * levs[i] * size_bps as i128 / BPS as i128) * sign;
-                trade(i, target, position)?;
+                trade(i, target, book)?;
             }
         }
     }
@@ -318,6 +394,29 @@ fn other_notional(legs: &[Leg; MAX_MARKETS], except: usize) -> i128 {
         }
     }
     s
+}
+
+/// Blind pricing: the license fee is set inside the TEE from the author's
+/// private per-tick Sharpe ratio; only the resulting price is public.
+/// Sharpe <= 0 maps to the minimum fee, Sharpe >= 3 to the maximum.
+pub(crate) fn blind_price(sum_ret: i64, sum_ret_sq: i64, n: u32, min_bps: u16, max_bps: u16) -> u16 {
+    if n < 20 || max_bps <= min_bps {
+        return min_bps;
+    }
+    let n_i = n as i128;
+    let mean = sum_ret as i128 / n_i; // 1e6-scaled fraction
+    let ex2 = sum_ret_sq as i128 / n_i; // 1e6-scaled
+    let var = ex2 - mean * mean / USDC_SCALE as i128; // 1e6-scaled
+    if var <= 0 {
+        return if mean > 0 { max_bps } else { min_bps };
+    }
+    let std = crate::perps::isqrt(var * USDC_SCALE as i128); // 1e6-scaled
+    if std == 0 {
+        return min_bps;
+    }
+    let sharpe_x100 = mean * 100 * crate::perps::isqrt(n_i) / std;
+    let score = sharpe_x100.clamp(0, 300);
+    (min_bps as i128 + (max_bps - min_bps) as i128 * score / 300) as u16
 }
 
 // ------------------------------------------------------------ scheduling (ER)

@@ -25,7 +25,9 @@ export const marketPda = (round: PublicKey, index: number) => pda([Buffer.from("
 export const entrantPda = (round: PublicKey, owner: PublicKey) => pda([Buffer.from("ent"), round.toBuffer(), owner.toBuffer()]);
 export const strategyPda = (round: PublicKey, owner: PublicKey) => pda([Buffer.from("strat"), round.toBuffer(), owner.toBuffer()]);
 export const positionPda = (round: PublicKey, owner: PublicKey) => pda([Buffer.from("pos"), round.toBuffer(), owner.toBuffer()]);
-export const hallPda = (wallet: PublicKey) => pda([Buffer.from("hall"), wallet.toBuffer()]);
+export const licensePda = (round: PublicKey, buyer: PublicKey, author: PublicKey) =>
+  pda([Buffer.from("lic"), round.toBuffer(), buyer.toBuffer(), author.toBuffer()]);
+export const hallPda =(wallet: PublicKey) => pda([Buffer.from("hall"), wallet.toBuffer()]);
 export const mockFeedPda = (authority: PublicKey, feedId: number) => pda([Buffer.from("mockfeed"), authority.toBuffer(), u32(feedId)]);
 
 export const permissionPda = (account: PublicKey) => permissionPdaFromAccount(account);

@@ -53,7 +53,9 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
   bx.log = (...a) => console.log("   ", ...a);
   const users = Array.from({ length: N }, () => Keypair.generate());
   const stranger = Keypair.generate();
-  const names = ["momentum", "meanReversion", "breakout", "randomWalk", "alwaysLong", "degen"];
+  const backer = Keypair.generate();
+  let taskBase = 0;
+  const names =["momentum", "meanReversion", "breakout", "randomWalk", "alwaysLong", "degen"];
   const codes = users.map((_, i) => strategies.BUILTIN_STRATEGIES[names[i % names.length]](0));
   let mint: PublicKey;
   let roundId: number;
@@ -147,9 +149,9 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
   it("4. entrants join and delegate (L1)", async () => {
     // fund entrants with SOL + USDC
     const fund = new Transaction();
-    for (const u of [...users, stranger]) fund.add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: u.publicKey, lamports: 0.08 * LAMPORTS_PER_SOL }));
+    for (const u of [...users, stranger, backer]) fund.add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: u.publicKey, lamports: 0.08 * LAMPORTS_PER_SOL }));
     await bx.sendBase(fund.instructions, [admin], "fund entrants SOL");
-    for (const u of users) {
+    for (const u of [...users, backer]) {
       const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, u.publicKey);
       await mintTo(bx.base, admin, mint, a.address, admin, 1_000n * USDC);
     }
@@ -224,7 +226,8 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     } catch (e) {
       rec("VRF request", false, String(e).slice(0, 160));
     }
-    const base = Math.floor(Math.random() * 1_000_000_000);
+    taskBase = Math.floor(Math.random() * 1_000_000_000);
+    const base = taskBase;
     await bx.scheduleClock(round, base);
     for (const [i, u] of users.entries()) await bx.scheduleEntrantTick(round, u.publicKey, feeds, base + 1 + i);
     const t0 = Date.now();
@@ -236,6 +239,30 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     }
     rec("crank clock ticking", !!r && Number(r.tick) >= 5, `tick ${r?.tick} after ${Date.now() - t0}ms`);
     rec("VRF seed landed", !!r?.vrfReady, r?.vrfReady ? `mystery market ${r.mysteryMarket}` : "not yet");
+  });
+
+  it("8b. blind licensing: a backer runs entrant 0's sealed strategy on its own margin", async () => {
+    const author = users[0].publicKey;
+    const ent = await bx.fetchEntrant(round, author);
+    rec("blind price published for entrant 0", !!ent, `fee ${ent?.feePriceBps} bps (only the price is public)`);
+    await bx.openLicense(round, mint, backer, author);
+    await bx.delegateLicense(round, backer, author);
+    await bx.depositToEr(backer, mint, 200n * USDC);
+    await bx.waitErBalance(backer, mint, 200n * USDC);
+    const lic = pda.licensePda(round, backer.publicKey, author);
+    await bx.waitOnEr(backer, lic);
+    await bx.activateLicense(round, mint, backer, author, 100n * USDC);
+    await bx.scheduleLicenseTick(round, backer.publicKey, author, feeds, taskBase + 100);
+    const own = await bx.fetchLicense(round, backer, backer.publicKey, author);
+    rec("backer reads own license", !!own && own.active === 1, own ? `margin ${Number(own.margin) / 1e6} USDC, fee ${own.feeBps} bps` : "null");
+    const au = await bx.fetchLicense(round, users[0], backer.publicKey, author);
+    rec("author reads the license (member)", !!au);
+    const st = await bx.fetchLicense(round, stranger, backer.publicKey, author).catch(() => null);
+    rec("stranger cannot read the license", !st, st ? "LEAK" : "null");
+    const peek = await (await bx.tee(backer)).getAccountInfo(pda.strategyPda(round, author), "processed").catch(() => null);
+    rec("backer cannot read the strategy it runs", !peek, peek ? "LEAK" : "null");
+    const e2 = await bx.fetchEntrant(round, author);
+    rec("author license count incremented", Number(e2?.licenseCount) === 1, `${e2?.licenseCount}`);
   });
 
   it("9. round runs; mid-round hot-swap; watch the scoreboard", async () => {
@@ -271,10 +298,42 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
       const p = await bx.fetchPosition(round, u);
       console.log(`    entrant ${i} ${names[i % names.length]}: margin=${Number(p.margin) / 1e6} realized=${Number(p.realizedPnl) / 1e6} trades=${p.tradeCount} steps=${p.lastSteps} fault=${p.lastFault} liq=${p.liquidated}`);
     }
+    const l = await bx.fetchLicense(round, backer, backer.publicKey, users[0].publicKey);
+    if (l) {
+      console.log(`    license backer->entrant 0: margin=${Number(l.margin) / 1e6} realized=${Number(l.realizedPnl) / 1e6} fees=${Number(l.accruedFees) / 1e6} trades=${l.tradeCount} fee=${l.feeBps}bps liq=${l.liquidated} fault=${l.lastFault}`);
+      rec("license ticked by the crank", Number(l.ranTick) > 0, `last tick ${Number(l.ranTick) - 1}, ${l.tradeCount} trades`);
+    } else {
+      rec("license ticked by the crank", false, "license unreadable by its buyer");
+    }
     if (pusher) console.log(`    price pusher errors: ${pusherErrors}`);
   });
 
   it("10. settle every entrant, undelegate scrubbed accounts (ER)", async () => {
+    // The license settles first: fees to the author, the rest back to the backer, on the ER.
+    const author = users[0];
+    const lic = await bx.fetchLicense(round, backer, backer.publicKey, author.publicKey);
+    const authorBefore = await bx.erTokenBalance(author, mint);
+    const backerBefore = await bx.erTokenBalance(backer, mint);
+    await bx.settleLicense(round, mint, backer.publicKey, author.publicKey, 3);
+    const authorAfter = await bx.erTokenBalance(author, mint);
+    const backerAfter = await bx.erTokenBalance(backer, mint);
+    const fees = BigInt(lic?.accruedFees?.toString() ?? "0");
+    rec(
+      "license settled: author paid its accrued fees",
+      lic?.liquidated ? authorAfter >= authorBefore : authorAfter - authorBefore === fees,
+      `${Number(authorAfter - authorBefore) / 1e6} USDC at ${lic?.feeBps} bps`,
+    );
+    rec("license settled: backer got the rest back", backerAfter > backerBefore, `+${Number(backerAfter - backerBefore) / 1e6} USDC`);
+    await bx.undelegateLicense(round, backer.publicKey, author.publicKey);
+    const licKey = pda.licensePda(round, backer.publicKey, author.publicKey);
+    let licOnL1: any = null;
+    for (let k = 0; k < 60 && !licOnL1; k++) {
+      const info = await bx.base.getAccountInfo(licKey);
+      if (info && info.owner.equals(bx.program.programId)) licOnL1 = info;
+      else await sleep(1000);
+    }
+    rec("license back on L1 as zeros", !!licOnL1 && licOnL1.data.subarray(8).every((b: number) => b === 0), licOnL1 ? `${licOnL1.data.length} bytes` : "not returned");
+
     for (const u of users) await bx.settle(round, mint, u.publicKey, 3);
     for (const u of users) await bx.undelegateEntrant(round, u.publicKey);
     // verify on L1: bodies are zero, hashes published

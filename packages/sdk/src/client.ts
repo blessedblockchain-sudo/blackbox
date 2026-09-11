@@ -531,6 +531,127 @@ export class BlackboxClient {
     return this.sendBase(ixs, [user], "withdraw_spl");
   }
 
+  // ------------------------------------------------------------ blind licensing
+
+  /** L1: create the buyer's License on `author` plus its custody ATA/eATA. */
+  async openLicense(round: PublicKey, mint: PublicKey, buyer: Keypair, author: PublicKey): Promise<string> {
+    const license = P.licensePda(round, buyer.publicKey, author);
+    const e = P.eataAccounts(license, mint);
+    const ix = await this.program.methods
+      .openLicense()
+      .accountsPartial({
+        buyer: buyer.publicKey,
+        round,
+        authorEntrant: P.entrantPda(round, author),
+        license,
+        author,
+        mint,
+        custodyAta: P.ata(mint, license),
+        custodyEata: e.eata,
+        eataBuffer: e.buffer,
+        eataRecord: e.record,
+        eataMetadata: e.metadata,
+        ephemeralTokenProgram: EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+        delegationProgram: DELEGATION_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+    return this.sendBase([ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ix], [buyer], "open_license");
+  }
+
+  async delegateLicense(round: PublicKey, buyer: Keypair, author: PublicKey): Promise<string> {
+    const ix = await this.program.methods
+      .delegateLicense()
+      .accountsPartial({ buyer: buyer.publicKey, round, author, license: P.licensePda(round, buyer.publicKey, author), validator: this.validator })
+      .instruction();
+    return this.sendBase([ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ix], [buyer], "delegate_license");
+  }
+
+  /** ER: make the License private to buyer + author, move margin in, lock the blind price. */
+  async activateLicense(round: PublicKey, mint: PublicKey, buyer: Keypair, author: PublicKey, margin: bigint): Promise<string> {
+    const license = P.licensePda(round, buyer.publicKey, author);
+    const ix = await this.program.methods
+      .activateLicense(bn(margin))
+      .accountsPartial({
+        buyer: buyer.publicKey,
+        round,
+        authorEntrant: P.entrantPda(round, author),
+        license,
+        permission: P.permissionPda(license),
+        buyerAta: P.ata(mint, buyer.publicKey),
+        custodyAta: P.ata(mint, license),
+        permissionProgram: PERMISSION_PROGRAM_ID,
+        ephemeralVault: EPHEMERAL_VAULT_ID,
+        magicProgram: MAGIC_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    return this.sendEr([ix], [buyer], "activate_license");
+  }
+
+  async scheduleLicenseTick(round: PublicKey, buyer: PublicKey, author: PublicKey, feeds: PublicKey[], taskId: number, payer: Keypair = this.admin): Promise<string> {
+    const ix = await this.program.methods
+      .scheduleLicenseTick(new BN(taskId))
+      .accountsPartial({
+        payer: payer.publicKey,
+        round,
+        authorEntrant: P.entrantPda(round, author),
+        strategy: P.strategyPda(round, author),
+        license: P.licensePda(round, buyer, author),
+        buyer,
+        magicProgram: MAGIC_PROGRAM_ID,
+      })
+      .remainingAccounts(await this.marketRemaining(round, feeds))
+      .instruction();
+    return this.sendEr([ix], [payer], "schedule_license_tick");
+  }
+
+  /** Manually run one license tick (the crank normally does this). */
+  async tickLicense(round: PublicKey, buyer: PublicKey, author: PublicKey, feeds: PublicKey[], payer: Keypair = this.admin): Promise<string> {
+    const ix = await this.program.methods
+      .tickLicense()
+      .accountsPartial({ round, authorEntrant: P.entrantPda(round, author), strategy: P.strategyPda(round, author), license: P.licensePda(round, buyer, author) })
+      .remainingAccounts(await this.marketRemaining(round, feeds))
+      .instruction();
+    return this.sendEr([ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }), ix], [payer], "tick_license");
+  }
+
+  /** ER, once the round is settling: close legs, settle PnL with the vault, pay the author's fees, return the rest to the buyer, scrub. */
+  async settleLicense(round: PublicKey, mint: PublicKey, buyer: PublicKey, author: PublicKey, nMarkets: number, payer: Keypair = this.admin): Promise<string> {
+    const license = P.licensePda(round, buyer, author);
+    const ix = await this.program.methods
+      .settleLicense()
+      .accountsPartial({
+        payer: payer.publicKey,
+        round,
+        license,
+        buyer,
+        author,
+        custodyAta: P.ata(mint, license),
+        vaultAta: P.ata(mint, round),
+        buyerAta: P.ata(mint, buyer),
+        authorAta: P.ata(mint, author),
+        permission: P.permissionPda(license),
+        permissionProgram: PERMISSION_PROGRAM_ID,
+        ephemeralVault: EPHEMERAL_VAULT_ID,
+        magicProgram: MAGIC_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .remainingAccounts(Array.from({ length: nMarkets }, (_, i) => ({ pubkey: P.marketPda(round, i), isSigner: false, isWritable: true })))
+      .instruction();
+    return this.sendEr([ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }), ix], [payer], "settle_license");
+  }
+
+  async undelegateLicense(round: PublicKey, buyer: PublicKey, author: PublicKey, payer: Keypair = this.admin): Promise<string> {
+    const ix = await this.program.methods
+      .undelegateLicense()
+      .accountsPartial({ payer: payer.publicKey, license: P.licensePda(round, buyer, author), magicProgram: MAGIC_PROGRAM_ID, magicContext: MAGIC_CONTEXT_ID })
+      .instruction();
+    return this.sendEr([ix], [payer], "undelegate_license");
+  }
+
   // ------------------------------------------------------------ local mock feeds
 
   async initMockFeed(feedId: number, rawPrice: bigint, decimals: number): Promise<PublicKey> {
@@ -581,6 +702,21 @@ export class BlackboxClient {
     const info = await conn.getAccountInfo(P.strategyPda(round, owner.publicKey), "processed");
     if (!info) return null;
     return this.program.coder.accounts.decode("strategy", info.data);
+  }
+
+  /** Entrants are public: blind fee price, license count, published hash. */
+  async fetchEntrant(round: PublicKey, owner: PublicKey) {
+    const info = await this.teePublic().getAccountInfo(P.entrantPda(round, owner), "processed");
+    if (!info) return null;
+    return this.program.coder.accounts.decode("entrant", info.data);
+  }
+
+  /** A License is readable only by its buyer and its author, through their TEE tokens. */
+  async fetchLicense(round: PublicKey, viewer: Keypair, buyer: PublicKey, author: PublicKey) {
+    const conn = await this.tee(viewer);
+    const info = await conn.getAccountInfo(P.licensePda(round, buyer, author), "processed");
+    if (!info) return null;
+    return this.program.coder.accounts.decode("license", info.data);
   }
 
   async fetchMarket(round: PublicKey, index: number) {

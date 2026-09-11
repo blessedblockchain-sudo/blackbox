@@ -3,8 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "main": "src/index.ts",
-  "bin": { "blackbox-mcp": "src/index.ts" },
-  "scripts": { "start": "ts-node --transpile-only src/index.ts", "typecheck": "tsc --noEmit -p ." },
+  "types": "src/index.ts",
+  "bin": { "blackbox-mcp": "bin/blackbox-mcp.js" },
+  "scripts": {
+    "start": "node bin/blackbox-mcp.js",
+    "start:http": "node bin/blackbox-mcp.js --http 8765",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "ts-mocha -p ./tsconfig.json 'test/**/*.ts' --timeout 300000",
+    "test:e2e": "BLACKBOX_MCP_E2E=1 ts-mocha -p ./tsconfig.json test/e2e-flow.test.ts --timeout 600000"
+  },
   "dependencies": {
     "@blackbox/sdk": "workspace:*",
     "@blackbox/compiler": "workspace:*",

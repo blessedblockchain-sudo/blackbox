@@ -92,6 +92,29 @@ pub mod blackbox {
         instructions::tick::tick_entrant(ctx)
     }
 
+    // ---- blind licensing
+    pub fn open_license(ctx: Context<OpenLicense>) -> Result<()> {
+        instructions::license::open_license(ctx)
+    }
+    pub fn delegate_license(ctx: Context<DelegateLicense>) -> Result<()> {
+        instructions::license::delegate_license(ctx)
+    }
+    pub fn activate_license(ctx: Context<ActivateLicense>, margin: u64) -> Result<()> {
+        instructions::license::activate_license(ctx, margin)
+    }
+    pub fn schedule_license_tick<'info>(ctx: Context<'info, ScheduleLicenseTick<'info>>, task_id: i64) -> Result<()> {
+        instructions::license::schedule_license_tick(ctx, task_id)
+    }
+    pub fn tick_license<'info>(ctx: Context<'info, TickLicense<'info>>) -> Result<()> {
+        instructions::license::tick_license(ctx)
+    }
+    pub fn settle_license<'info>(ctx: Context<'info, SettleLicense<'info>>) -> Result<()> {
+        instructions::license::settle_license(ctx)
+    }
+    pub fn undelegate_license(ctx: Context<UndelegateLicense>) -> Result<()> {
+        instructions::license::undelegate_license(ctx)
+    }
+
     // ---- ER: randomness
     pub fn request_round_seed(ctx: Context<RequestRoundSeed>, client_seed: u8) -> Result<()> {
         instructions::vrf::request_round_seed(ctx, client_seed)

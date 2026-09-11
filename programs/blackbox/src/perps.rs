@@ -42,11 +42,29 @@ pub fn isqrt(v: i128) -> i128 {
 /// Market indicators ---------------------------------------------------------
 
 /// Push a new mark into the market's ring buffer and refresh EMAs and vol.
+///
+/// Volatility is maintained incrementally: add the squared return of the new
+/// mark against the newest one, and (once the ring is full) subtract the
+/// squared return of the pair that falls out. Integer arithmetic makes the
+/// add and the later subtract cancel exactly, so this equals recomputing
+/// sqrt(mean(r^2)) over the whole ring, at constant cost per tick.
 pub fn update_indicators(m: &mut Market, mark: i64, tick: u64, publish_time: i64) -> Result<()> {
-    let pos = m.ring_pos as usize;
+    let len = m.ring_len as usize;
+    let pos = m.ring_pos as usize; // slot to overwrite (the oldest once full)
+    if len > 0 {
+        let newest = m.ring[(pos + RING_LEN - 1) % RING_LEN];
+        let r = abs_ret(mark, newest);
+        m.ret_sq_sum = m.ret_sq_sum.saturating_add(r.saturating_mul(r));
+    }
+    if len == RING_LEN {
+        let oldest = m.ring[pos];
+        let second = m.ring[(pos + 1) % RING_LEN];
+        let r = abs_ret(second, oldest);
+        m.ret_sq_sum = m.ret_sq_sum.saturating_sub(r.saturating_mul(r));
+    }
     m.ring[pos] = mark;
     m.ring_pos = ((pos + 1) % RING_LEN) as u8;
-    if (m.ring_len as usize) < RING_LEN {
+    if len < RING_LEN {
         m.ring_len += 1;
     }
     if m.ema8 == 0 {
@@ -58,11 +76,41 @@ pub fn update_indicators(m: &mut Market, mark: i64, tick: u64, publish_time: i64
         m.ema21 = ema_step(m.ema21, mark, 21)?;
         m.ema55 = ema_step(m.ema55, mark, 55)?;
     }
-    m.vol = realized_vol(m)?;
+    let pairs = (m.ring_len as u64).saturating_sub(1);
+    m.vol = if pairs >= 2 { isqrt_u64(m.ret_sq_sum / pairs) as i64 } else { 0 };
     m.mark = mark;
     m.last_tick = tick;
     m.last_publish_time = publish_time;
     Ok(())
+}
+
+/// |a - b| / b as a 6-dp fraction, saturating at 100x. 0 when b <= 0.
+#[inline]
+fn abs_ret(a: i64, b: i64) -> u64 {
+    if b <= 0 {
+        return 0;
+    }
+    let diff = (a as i128 - b as i128).unsigned_abs();
+    let r = diff.saturating_mul(SCALE as u128) / b as u128;
+    r.min(100 * SCALE as u128) as u64
+}
+
+/// Integer square root (floor) for u64.
+pub fn isqrt_u64(v: u64) -> u64 {
+    if v < 2 {
+        return v;
+    }
+    let mut x = ((v as f64).sqrt() as u64).min(u32::MAX as u64); // close guess, then correct exactly
+    while x.checked_mul(x).map_or(true, |sq| sq > v) {
+        x -= 1;
+    }
+    while let Some(sq) = (x + 1).checked_mul(x + 1) {
+        if sq > v {
+            break;
+        }
+        x += 1;
+    }
+    x
 }
 
 /// ema += (mark - ema) * 2 / (n + 1)
@@ -90,33 +138,6 @@ pub fn ret(m: &Market, n: usize) -> Option<i64> {
     }
     let r = mul_div(m.mark as i128 - then as i128, SCALE as i128, then as i128).ok()?;
     to_i64(r).ok()
-}
-
-/// Realized volatility: sqrt(mean(r_i^2)) over consecutive ring returns, scaled.
-fn realized_vol(m: &Market) -> Result<i64> {
-    let n = m.ring_len as usize;
-    if n < 3 {
-        return Ok(0);
-    }
-    let mut sum_sq: i128 = 0;
-    let mut count: i128 = 0;
-    let newest = m.ring_pos as usize; // one past the newest
-    for k in 1..n {
-        let a_idx = (newest + RING_LEN - k) % RING_LEN; // newer
-        let b_idx = (newest + RING_LEN - k - 1) % RING_LEN; // older
-        let a = m.ring[a_idx] as i128;
-        let b = m.ring[b_idx] as i128;
-        if b <= 0 {
-            continue;
-        }
-        let r = mul_div(a - b, SCALE as i128, b)?; // scaled fraction
-        sum_sq = sum_sq.checked_add(r * r).ok_or(BlackboxError::MathOverflow)?;
-        count += 1;
-    }
-    if count == 0 {
-        return Ok(0);
-    }
-    to_i64(isqrt(sum_sq / count))
 }
 
 /// Pricing ---------------------------------------------------------------------
@@ -391,6 +412,41 @@ mod tests {
         assert!(r1 > 9_000 && r1 < 10_000, "{}", r1);
         assert!(m.ema8 > 100 * SCALE && m.ema8 < 104 * SCALE);
         assert!(m.vol > 0);
+    }
+
+    #[test]
+    fn incremental_vol_matches_full_recompute() {
+        let mut m = market(0);
+        let mut px: i64 = 150 * SCALE;
+        let mut seed: u64 = 42;
+        for t in 0..300u64 {
+            seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17;
+            let step = (seed % 2001) as i64 - 1000; // +-0.1%
+            px = px + px * step / 1_000_000;
+            update_indicators(&mut m, px, t, 0).unwrap();
+            // full recompute over the ring
+            let n = m.ring_len as usize;
+            let mut sum: u64 = 0;
+            for k in 1..n {
+                let a = m.ring[(m.ring_pos as usize + RING_LEN - k) % RING_LEN];
+                let b = m.ring[(m.ring_pos as usize + RING_LEN - k - 1) % RING_LEN];
+                let r = abs_ret(a, b);
+                sum += r * r;
+            }
+            assert_eq!(sum, m.ret_sq_sum, "tick {}", t);
+            if n >= 3 {
+                assert_eq!(m.vol as u64, isqrt_u64(sum / (n as u64 - 1)));
+            }
+        }
+    }
+
+    #[test]
+    fn isqrt_exact() {
+        for v in [0u64, 1, 2, 3, 4, 15, 16, 17, 1 << 40, u64::MAX] {
+            let r = isqrt_u64(v);
+            assert!(r.checked_mul(r).map_or(false, |sq| sq <= v), "{}", v);
+            assert!((r + 1).checked_mul(r + 1).map_or(true, |sq| sq > v), "{}", v);
+        }
     }
 
     #[test]

@@ -144,7 +144,9 @@ pub struct Market {
     pub ring_pos: u8,
     pub ring_len: u8,
     pub bump: u8,
-    pub _pad: [u8; 8],
+    /// Running sum of squared per-tick returns over the ring (scaled 1e12),
+    /// maintained incrementally so volatility costs O(1) per tick.
+    pub ret_sq_sum: u64,
 }
 
 impl Market {
@@ -224,6 +226,8 @@ pub struct Position {
     pub sum_ret_sq: i64,
     pub last_equity: i64,
     pub peak_equity: i64,
+    /// Round tick + 1 of the last executed tick (0 = never): one run per tick.
+    pub ran_tick: u64,
     pub trade_count: u32,
     pub last_steps: u32,
     pub ret_n: u32,
@@ -239,23 +243,35 @@ impl Position {
 }
 
 /// A licensee's mirror of an author's strategy. Delegated, PRIVATE to
-/// buyer + author, zero-copy.
+/// buyer + author, zero-copy. The crank runs the author's bytecode against
+/// these legs; neither the buyer nor anyone else can read the bytecode.
 #[account(zero_copy)]
 pub struct License {
     pub round: Pubkey,
     pub buyer: Pubkey,
     pub author: Pubkey,
+    /// Margin held in the license's custody token account, USDC 6dp.
     pub margin: u64,
+    /// Realized PnL net of license fees.
     pub realized_pnl: i64,
     pub legs: [Leg; MAX_MARKETS],
+    /// The author's strategy memory, separate per licensee.
+    pub mem: [i64; MEM_SLOTS],
+    /// Fees owed to the author, paid at settlement.
     pub accrued_fees: u64,
     pub opened_tick: u64,
     pub last_equity: i64,
+    pub peak_equity: i64,
+    /// Round tick + 1 of the last executed tick (0 = never): one run per tick.
+    pub ran_tick: u64,
+    pub trade_count: u32,
     pub fee_bps: u16,
     pub active: u8,
     pub liquidated: u8,
+    pub settled: u8,
     pub bump: u8,
-    pub _pad: [u8; 3],
+    pub last_fault: u8,
+    pub _pad: [u8; 5],
 }
 
 impl License {

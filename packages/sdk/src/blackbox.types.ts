@@ -14,6 +14,198 @@ export type Blackbox = {
   },
   "instructions": [
     {
+      "name": "activateLicense",
+      "discriminator": [
+        165,
+        114,
+        199,
+        175,
+        231,
+        240,
+        48,
+        63
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authorEntrant",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "authorEntrant.owner",
+                "account": "entrant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "license",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "authorEntrant.owner",
+                "account": "entrant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "license"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "buyerAta",
+          "writable": true
+        },
+        {
+          "name": "custodyAta",
+          "writable": true
+        },
+        {
+          "name": "permissionProgram",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeralVault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "margin",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "addMarket",
       "discriminator": [
         41,
@@ -878,6 +1070,207 @@ export type Blackbox = {
               {
                 "kind": "account",
                 "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "validator"
+        },
+        {
+          "name": "ownerProgram",
+          "address": "BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegateLicense",
+      "discriminator": [
+        39,
+        76,
+        13,
+        212,
+        154,
+        121,
+        234,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round"
+        },
+        {
+          "name": "author"
+        },
+        {
+          "name": "bufferLicense",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "license"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                156,
+                79,
+                37,
+                80,
+                36,
+                72,
+                1,
+                174,
+                233,
+                191,
+                181,
+                191,
+                93,
+                211,
+                214,
+                142,
+                12,
+                167,
+                199,
+                177,
+                204,
+                213,
+                34,
+                101,
+                73,
+                123,
+                102,
+                208,
+                174,
+                84,
+                247,
+                124
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordLicense",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "license"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataLicense",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "license"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "license",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "author"
               }
             ]
           }
@@ -2192,6 +2585,193 @@ export type Blackbox = {
       "args": []
     },
     {
+      "name": "openLicense",
+      "discriminator": [
+        0,
+        194,
+        190,
+        66,
+        30,
+        82,
+        33,
+        57
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round"
+        },
+        {
+          "name": "authorEntrant"
+        },
+        {
+          "name": "license",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "author"
+              }
+            ]
+          }
+        },
+        {
+          "name": "author"
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "custodyAta",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "license"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "custodyEata",
+          "writable": true
+        },
+        {
+          "name": "eataBuffer",
+          "writable": true
+        },
+        {
+          "name": "eataRecord",
+          "writable": true
+        },
+        {
+          "name": "eataMetadata",
+          "writable": true
+        },
+        {
+          "name": "ephemeralTokenProgram",
+          "address": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "openRound",
       "discriminator": [
         66,
@@ -3186,6 +3766,140 @@ export type Blackbox = {
       ]
     },
     {
+      "name": "scheduleLicenseTick",
+      "discriminator": [
+        120,
+        20,
+        194,
+        54,
+        43,
+        97,
+        193,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authorEntrant",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "authorEntrant.owner",
+                "account": "entrant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "strategy",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  114,
+                  97,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "authorEntrant.owner",
+                "account": "entrant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "license",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "authorEntrant.owner",
+                "account": "entrant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyer"
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "taskId",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "setMockFeed",
       "discriminator": [
         250,
@@ -3775,6 +4489,182 @@ export type Blackbox = {
       "args": []
     },
     {
+      "name": "settleLicense",
+      "discriminator": [
+        193,
+        187,
+        151,
+        181,
+        228,
+        193,
+        176,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "license",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "author"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyer"
+        },
+        {
+          "name": "author"
+        },
+        {
+          "name": "custodyAta",
+          "writable": true
+        },
+        {
+          "name": "vaultAta",
+          "writable": true
+        },
+        {
+          "name": "buyerAta",
+          "writable": true
+        },
+        {
+          "name": "authorAta",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "license"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permissionProgram",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeralVault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "startRound",
       "discriminator": [
         144,
@@ -3876,6 +4766,38 @@ export type Blackbox = {
           "docs": [
             "Private position."
           ],
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "tickLicense",
+      "discriminator": [
+        139,
+        183,
+        220,
+        204,
+        241,
+        168,
+        208,
+        241
+      ],
+      "accounts": [
+        {
+          "name": "round"
+        },
+        {
+          "name": "authorEntrant"
+        },
+        {
+          "name": "strategy",
+          "docs": [
+            "The author's private strategy: read by the program, never by the buyer."
+          ]
+        },
+        {
+          "name": "license",
           "writable": true
         }
       ],
@@ -4009,6 +4931,40 @@ export type Blackbox = {
         }
       ],
       "args": []
+    },
+    {
+      "name": "undelegateLicense",
+      "discriminator": [
+        216,
+        7,
+        81,
+        250,
+        96,
+        138,
+        252,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "license",
+          "writable": true
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -4036,6 +4992,19 @@ export type Blackbox = {
         128,
         153,
         206
+      ]
+    },
+    {
+      "name": "license",
+      "discriminator": [
+        248,
+        152,
+        195,
+        100,
+        185,
+        108,
+        176,
+        231
       ]
     },
     {
@@ -4114,6 +5083,21 @@ export type Blackbox = {
         106,
         169,
         102
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "licenseSettled",
+      "discriminator": [
+        14,
+        158,
+        13,
+        21,
+        211,
+        191,
+        114,
+        65
       ]
     }
   ],
@@ -4508,6 +5492,165 @@ export type Blackbox = {
       }
     },
     {
+      "name": "license",
+      "docs": [
+        "A licensee's mirror of an author's strategy. Delegated, PRIVATE to",
+        "buyer + author, zero-copy. The crank runs the author's bytecode against",
+        "these legs; neither the buyer nor anyone else can read the bytecode."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "author",
+            "type": "pubkey"
+          },
+          {
+            "name": "margin",
+            "docs": [
+              "Margin held in the license's custody token account, USDC 6dp."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "realizedPnl",
+            "docs": [
+              "Realized PnL net of license fees."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "legs",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "leg"
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "mem",
+            "docs": [
+              "The author's strategy memory, separate per licensee."
+            ],
+            "type": {
+              "array": [
+                "i64",
+                16
+              ]
+            }
+          },
+          {
+            "name": "accruedFees",
+            "docs": [
+              "Fees owed to the author, paid at settlement."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "openedTick",
+            "type": "u64"
+          },
+          {
+            "name": "lastEquity",
+            "type": "i64"
+          },
+          {
+            "name": "peakEquity",
+            "type": "i64"
+          },
+          {
+            "name": "ranTick",
+            "docs": [
+              "Round tick + 1 of the last executed tick (0 = never): one run per tick."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "tradeCount",
+            "type": "u32"
+          },
+          {
+            "name": "feeBps",
+            "type": "u16"
+          },
+          {
+            "name": "active",
+            "type": "u8"
+          },
+          {
+            "name": "liquidated",
+            "type": "u8"
+          },
+          {
+            "name": "settled",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "lastFault",
+            "type": "u8"
+          },
+          {
+            "name": "pad",
+            "type": {
+              "array": [
+                "u8",
+                5
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "licenseSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "author",
+            "type": "pubkey"
+          },
+          {
+            "name": "feesPaid",
+            "type": "u64"
+          },
+          {
+            "name": "returned",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "market",
       "docs": [
         "Live per-market state (delegated, public, zero-copy). Indicators are",
@@ -4632,13 +5775,12 @@ export type Blackbox = {
             "type": "u8"
           },
           {
-            "name": "pad",
-            "type": {
-              "array": [
-                "u8",
-                8
-              ]
-            }
+            "name": "retSqSum",
+            "docs": [
+              "Running sum of squared per-tick returns over the ring (scaled 1e12),",
+              "maintained incrementally so volatility costs O(1) per tick."
+            ],
+            "type": "u64"
           }
         ]
       }
@@ -4772,6 +5914,13 @@ export type Blackbox = {
           {
             "name": "peakEquity",
             "type": "i64"
+          },
+          {
+            "name": "ranTick",
+            "docs": [
+              "Round tick + 1 of the last executed tick (0 = never): one run per tick."
+            ],
+            "type": "u64"
           },
           {
             "name": "tradeCount",

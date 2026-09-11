@@ -16,7 +16,7 @@
  * app's, the MCP server's) is settled before the round closes.
  */
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram } from "@solana/web3.js";
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
+import { createMint } from "@solana/spl-token";
 import * as fs from "fs";
 import * as path from "path";
 import * as anchor from "@coral-xyz/anchor";
@@ -207,10 +207,7 @@ async function main() {
   // 4) bots join; backers get SOL + USDC for later
   const wallets = [...bots.map((b) => ({ kp: b.kp, sol: 0.06 })), ...backers.map((b) => ({ kp: b.kp, sol: 0.1 }))];
   await bx.sendBase(wallets.map((w) => SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: w.kp.publicKey, lamports: w.sol * LAMPORTS_PER_SOL })), [admin], "fund bots");
-  for (const w of wallets) {
-    const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, w.kp.publicKey);
-    await mintTo(bx.base, admin, mint, a.address, admin, 2_000n * USDC);
-  }
+  for (const w of wallets) await bx.mintTestUsdc(mint, w.kp.publicKey, 2_000n * USDC);
   for (const b of bots) {
     await bx.join(round, mint, b.kp);
     await bx.delegateEntrant(round, b.kp);
@@ -240,8 +237,7 @@ async function main() {
     try {
       const kp = Keypair.generate();
       await bx.sendBase([SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: kp.publicKey, lamports: 0.05 * LAMPORTS_PER_SOL })], [admin], "fund house");
-      const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, kp.publicKey);
-      await mintTo(bx.base, admin, mint, a.address, admin, bankroll);
+      await bx.mintTestUsdc(mint, kp.publicKey, bankroll);
       await bx.depositToEr(kp, mint, bankroll);
       await bx.waitErBalance(kp, mint, bankroll);
       await bx.seedVault(round, mint, bankroll, kp);

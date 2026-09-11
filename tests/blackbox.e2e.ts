@@ -8,12 +8,7 @@
  */
 import { expect } from "chai";
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
-import {
-  createMint,
-  getOrCreateAssociatedTokenAccount,
-  mintTo,
-  getAccount,
-} from "@solana/spl-token";
+import { createMint } from "@solana/spl-token";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -26,6 +21,17 @@ const TICK_MS = Number(process.env.TICK_MS || 400);
 const DURATION = Number(process.env.DURATION_TICKS || 90);
 const USDC = 1_000_000n;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Retry transient devnet RPC failures for calls that do not go through BlackboxClient.sendBase. */
+async function retry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= attempts - 1 || !/Blockhash not found|block height exceeded|429|fetch failed/i.test(String(e))) throw e;
+      await sleep(1500 * (i + 1));
+    }
+  }
+}
 
 type Row = { step: string; status: "PASS" | "FAIL" | "INFO"; detail: string };
 const rows: Row[] = [];
@@ -86,7 +92,7 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
       const c = await bx.program.account.protocolConfig.fetch(pda.configPda());
       mint = c.usdcMint;
     } else {
-      mint = state.mint ? new PublicKey(state.mint) : await createMint(bx.base, admin, admin.publicKey, null, 6);
+      mint = state.mint ? new PublicKey(state.mint) : await retry(() => createMint(bx.base, admin, admin.publicKey, null, 6));
       await bx.initProtocol(mint, 500);
     }
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
@@ -155,10 +161,7 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     const fund = new Transaction();
     for (const u of [...users, stranger, backer]) fund.add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: u.publicKey, lamports: 0.08 * LAMPORTS_PER_SOL }));
     await bx.sendBase(fund.instructions, [admin], "fund entrants SOL");
-    for (const u of [...users, backer]) {
-      const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, u.publicKey);
-      await mintTo(bx.base, admin, mint, a.address, admin, 1_000n * USDC);
-    }
+    for (const u of [...users, backer]) await bx.mintTestUsdc(mint, u.publicKey, 1_000n * USDC);
     for (const u of users) {
       await bx.join(round, mint, u);
       await bx.delegateEntrant(round, u);
@@ -198,8 +201,7 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     rec("pot collected", r?.pot.toString() === (5n * USDC * BigInt(N)).toString(), `pot ${r?.pot}`);
     // House bankroll from a fresh wallet into the vault; it counts toward the public solvency beacon.
     await bx.sendBase([SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: house.publicKey, lamports: 0.05 * LAMPORTS_PER_SOL })], [admin], "fund house");
-    const ha = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, house.publicKey);
-    await mintTo(bx.base, admin, mint, ha.address, admin, 500n * USDC);
+    await bx.mintTestUsdc(mint, house.publicKey, 500n * USDC);
     await bx.depositToEr(house, mint, 500n * USDC);
     await bx.waitErBalance(house, mint, 500n * USDC);
     const vb0 = BigInt((await bx.fetchRound(round))!.vaultBalance.toString());

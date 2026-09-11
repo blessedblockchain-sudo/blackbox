@@ -17,6 +17,8 @@ import {
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createMintToInstruction,
   getAccount,
 } from "@solana/spl-token";
 import {
@@ -692,6 +694,22 @@ export class BlackboxClient {
       .accountsPartial({ payer: payer.publicKey, license: P.licensePda(round, buyer, author), magicProgram: MAGIC_PROGRAM_ID, magicContext: MAGIC_CONTEXT_ID })
       .instruction();
     return this.sendEr([ix], [payer], "undelegate_license");
+  }
+
+  // ------------------------------------------------------------ test USDC
+
+  /**
+   * Create `owner`'s ATA if needed and mint `amount` test USDC to it in one
+   * transaction (the admin must be the mint authority). Goes through sendBase,
+   * so transient devnet RPC errors ("Blockhash not found", 429) are retried.
+   */
+  async mintTestUsdc(mint: PublicKey, owner: PublicKey, amount: bigint): Promise<string> {
+    const ata = P.ata(mint, owner);
+    return this.sendBase(
+      [createAssociatedTokenAccountIdempotentInstruction(this.admin.publicKey, ata, owner, mint), createMintToInstruction(mint, ata, this.admin.publicKey, amount)],
+      [this.admin],
+      "mint test USDC",
+    );
   }
 
   // ------------------------------------------------------------ house bankroll

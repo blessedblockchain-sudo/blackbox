@@ -96,7 +96,9 @@ describe("bx-attack privacy matrix against the live local round", function () {
 
   it("the committed L1 Strategy is zeroed and delegation PDAs hold no bytecode", () => {
     const l1 = rows.find((r) => /^L1 getAccountInfo → Strategy/.test(r.path));
-    const del = rows.find((r) => /delegation buffer\/record/.test(r.path));
+    const del = rows.find((r) => /^L1 delegation PDAs → Strategy/.test(r.path));
+    expect(l1, "L1 Strategy row present").to.exist;
+    expect(del, "L1 delegation PDAs row present").to.exist;
     expect(l1!.pass, l1!.result).to.equal(true);
     expect(del!.pass, del!.result).to.equal(true);
   });

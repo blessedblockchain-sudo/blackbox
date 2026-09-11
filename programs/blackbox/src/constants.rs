@@ -10,6 +10,7 @@ pub const POSITION_SEED: &[u8] = b"pos";
 pub const LICENSE_SEED: &[u8] = b"lic";
 pub const SCOREBOARD_SEED: &[u8] = b"board";
 pub const HALL_SEED: &[u8] = b"hall";
+pub const CHAT_SEED: &[u8] = b"chat";
 
 // Capacity limits (fixed so account layouts never change)
 pub const MAX_MARKETS: usize = 8;
@@ -19,6 +20,15 @@ pub const RING_LEN: usize = 64;
 pub const MEM_SLOTS: usize = 16;
 pub const MAX_BYTECODE: usize = 4096;
 pub const MAX_LICENSES_PER_AUTHOR: usize = 8;
+
+/// Round chat: an ephemeral (ER-only) ring buffer of CHAT_SLOTS messages.
+pub const CHAT_SLOTS: usize = 32;
+/// author 32 | tick u64 | unix ts i64 | len u8 | text 79
+pub const CHAT_SLOT_SIZE: usize = 128;
+pub const CHAT_TEXT_MAX: usize = 79;
+/// head u32 | count u32
+pub const CHAT_HEADER: usize = 8;
+pub const CHAT_SIZE: usize = CHAT_HEADER + CHAT_SLOTS * CHAT_SLOT_SIZE;
 
 /// USDC has 6 decimals, which equals the VM's fixed-point scale.
 pub const USDC_SCALE: i64 = 1_000_000;

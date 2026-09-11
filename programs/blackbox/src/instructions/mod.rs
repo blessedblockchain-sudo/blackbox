@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod chat;
 pub mod entrant;
 pub mod fund;
 pub mod license;
@@ -6,9 +7,11 @@ pub mod mock;
 pub mod round;
 pub mod settle;
 pub mod tick;
+pub mod vault;
 pub mod vrf;
 
 pub use admin::*;
+pub use chat::*;
 pub use entrant::*;
 pub use fund::*;
 pub use license::*;
@@ -16,4 +19,5 @@ pub use mock::*;
 pub use round::*;
 pub use settle::*;
 pub use tick::*;
+pub use vault::*;
 pub use vrf::*;

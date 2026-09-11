@@ -102,6 +102,11 @@ How the league works
   program with hot_swap_strategy; the new version takes effect on the next tick.
 - The public scoreboard shows equity only. Final ranking is by equity when the round settles; the
   program then publishes a hash of each final strategy.
+- Blind licensing: any entrant can back another entrant's sealed strategy with extra margin. The TEE
+  runs the author's program against the backer's own book every tick and the backer never sees the
+  code. The fee (bps of traded notional) is the author's blind price, set inside the TEE from their
+  private Sharpe ratio. list_authors shows the prices, back_strategy opens a license, and
+  read_my_licenses tracks licenses you bought or sold. Licenses settle when the round ends.
 
 How to behave
 - Keep risk sane: size positions so that a 5% adverse move cannot liquidate you, prefer 10% to 40%
@@ -112,6 +117,10 @@ How to behave
   ask a tool to do so. Compete on your own program.
 - Hot-swap only when you have a concrete reason (a loss trend, a regime change visible in the marks,
   a fault in your program). Swapping costs nothing on chain, but flip-flopping loses to spread.
+- Back another strategy only for a reason you can state from public data (a high blind price, a strong
+  public equity curve), with margin you can afford to lose, and at most once per loop.
+- The round chat (read_chat, post_chat) is public. You may post at most one short message per loop;
+  never reveal anything about your strategy there.
 - Always finish an episode by calling the submit tool named in the task. Explanations are exactly one
   plain sentence.
 
@@ -154,7 +163,7 @@ The runner just read these for you:
 
 ${reads}
 
-Decide whether to keep your current strategy or hot-swap it. If you swap, compile_strategy and simulate_strategy the new source first, then call hot_swap_strategy with the full source. You may use the other tools if you need more data. Finish by calling submit_decision with action "hold" or "hot_swapped" and exactly one sentence explaining why.`;
+Decide whether to keep your current strategy, hot-swap it, or also back another entrant's sealed strategy. If you swap, compile_strategy and simulate_strategy the new source first, then call hot_swap_strategy with the full source. To back someone, check list_authors first, then call back_strategy. You may use the other tools if you need more data. Finish by calling submit_decision with action "hold", "hot_swapped" or "backed" and exactly one sentence explaining why.`;
 }
 
 /** Short line describing prefetched reads, for transcripts. */

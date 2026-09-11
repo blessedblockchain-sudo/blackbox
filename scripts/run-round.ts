@@ -231,6 +231,22 @@ async function main() {
     await bx.setStrategy(round, b.kp, b.code());
     await bx.fund(round, mint, b.kp, 200n * USDC);
   }
+  // House bankroll: profits are paid in full whatever order entrants settle in.
+  const bankroll = BigInt(process.env.BANKROLL_USDC ?? 2000) * USDC;
+  if (bankroll > 0n) {
+    try {
+      const have = (await bx.hasErDeposit(admin.publicKey, mint)) ? await bx.erTokenBalance(admin, mint) : -1n;
+      if (have < bankroll) {
+        const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, admin.publicKey);
+        await mintTo(bx.base, admin, mint, a.address, admin, bankroll);
+        await bx.depositToEr(admin, mint, bankroll);
+        await bx.waitErBalance(admin, mint, bankroll);
+      }
+      await bx.seedVault(round, mint, bankroll);
+    } catch (e) {
+      console.log("bankroll seeding failed:", String(e).slice(0, 200));
+    }
+  }
   if (MODE === "dark") await bx.setScoreboardPrivacy(round, true);
 
   // External entrants (agents) register via the MCP server during the window and
@@ -267,6 +283,9 @@ async function main() {
         await backStrategy(bx, round, mint, feeds, b.kp, author, base + 500 + i);
         appendLicense({ name: b.name, buyer: b.kp.publicKey.toBase58(), author: author.toBase58(), bot: true, scheduled: true });
         console.log(`   ${b.name} licensed ${author.toBase58().slice(0, 6)}`);
+        const ent: any = await bx.fetchEntrant(round, author).catch(() => null);
+        const who = bots.find((x) => x.kp.publicKey.equals(author))?.name ?? author.toBase58().slice(0, 6);
+        await bx.postChat(round, b.kp, `${b.name}: backing ${who} at ${ent?.feePriceBps ?? "?"} bps, sight unseen`).catch(() => {});
       } catch (e) {
         console.log(`   ${b.name} license failed: ${String(e).slice(0, 200)}`);
       }
@@ -307,12 +326,19 @@ async function main() {
       console.log(`   license ${l.buyer.slice(0, 6)} settle failed: ${String(e).slice(0, 200)}`);
     }
   }
-  for (const owner of entrantKeys) await bx.settle(round, mint, owner, 3);
+  // Losers first (lit rounds), so profits come out of their losses before the bankroll.
+  const sbEnd: any = await bx.fetchScoreboard(round).catch(() => null);
+  const pnl = new Map<string, number>();
+  for (const e of sbEnd ? sbEnd.entries.slice(0, sbEnd.n) : []) pnl.set((e.owner as PublicKey).toBase58(), Number(e.equity) - Number(e.deposited));
+  const settleOrder = [...entrantKeys].sort((a, b) => (pnl.get(a.toBase58()) ?? 0) - (pnl.get(b.toBase58()) ?? 0));
+  for (const owner of settleOrder) await bx.settle(round, mint, owner, 3);
   for (const owner of entrantKeys) await bx.undelegateEntrant(round, owner);
   await bx.rank(round);
   const sb: any = await bx.fetchScoreboard(round);
   const ranked = sb.entries.slice(0, sb.n).filter((e: any) => e.rank > 0).sort((a: any, b: any) => a.rank - b.rank);
   await bx.payPrizes(round, mint, ranked.slice(0, 3).map((e: any) => e.owner));
+  await bx.sweepVault(round, mint).catch((e) => console.log("sweep_vault failed:", String(e).slice(0, 160)));
+  await bx.closeChat(round).catch((e) => console.log("close_chat failed:", String(e).slice(0, 160)));
   await bx.closeRound(round, 3);
   await bx.waitRoundOnL1(round);
   for (const owner of entrantKeys) await bx.recordHall(round, owner).catch(() => {});

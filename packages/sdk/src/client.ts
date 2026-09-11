@@ -63,6 +63,36 @@ export interface MarketParams {
   oiCap: bigint | number;
 }
 
+export interface ChatMessage {
+  author: PublicKey;
+  tick: number;
+  /** Unix seconds on the ER. */
+  ts: number;
+  text: string;
+}
+
+/** Decode the round chat ring buffer (programs/blackbox/src/instructions/chat.rs), oldest first. */
+export function decodeChat(data: Buffer): ChatMessage[] {
+  const SLOTS = 32;
+  const SLOT = 128;
+  const HEADER = 8;
+  if (data.length < HEADER + SLOTS * SLOT) return [];
+  const head = data.readUInt32LE(0) % SLOTS;
+  const n = Math.min(data.readUInt32LE(4), SLOTS);
+  const out: ChatMessage[] = [];
+  for (let k = 0; k < n; k++) {
+    const off = HEADER + ((head - n + k + SLOTS) % SLOTS) * SLOT;
+    const len = Math.min(data[off + 48], 79);
+    out.push({
+      author: new PublicKey(data.subarray(off, off + 32)),
+      tick: Number(data.readBigUInt64LE(off + 32)),
+      ts: Number(data.readBigInt64LE(off + 40)),
+      text: data.subarray(off + 49, off + 49 + len).toString("utf8"),
+    });
+  }
+  return out;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const bn = (v: bigint | number) => new BN(v.toString());
 
@@ -650,6 +680,61 @@ export class BlackboxClient {
       .accountsPartial({ payer: payer.publicKey, license: P.licensePda(round, buyer, author), magicProgram: MAGIC_PROGRAM_ID, magicContext: MAGIC_CONTEXT_ID })
       .instruction();
     return this.sendEr([ix], [payer], "undelegate_license");
+  }
+
+  // ------------------------------------------------------------ house bankroll
+
+  /**
+   * True once `user` has deposited into the ER: their ephemeral ATA exists on L1
+   * and is delegated. Read an ER token balance only after this; an earlier ER
+   * read makes the ER clone the ATA as a plain account that later writes reject.
+   */
+  async hasErDeposit(user: PublicKey, mint: PublicKey): Promise<boolean> {
+    const info = await this.base.getAccountInfo(P.eataAccounts(user, mint).eata, "confirmed").catch(() => null);
+    return !!info && info.owner.equals(DELEGATION_PROGRAM_ID);
+  }
+
+  /** ER: the admin adds a house bankroll to the round vault (counted in the solvency beacon). */
+  async seedVault(round: PublicKey, mint: PublicKey, amount: bigint): Promise<string> {
+    const ix = await this.program.methods
+      .seedVault(bn(amount))
+      .accountsPartial({ admin: this.admin.publicKey, round, adminAta: P.ata(mint, this.admin.publicKey), vaultAta: P.ata(mint, round), tokenProgram: TOKEN_PROGRAM_ID })
+      .instruction();
+    return this.sendEr([ix], [this.admin], "seed_vault");
+  }
+
+  /** ER, after prizes and every license have settled: the admin takes what is left in the vault. */
+  async sweepVault(round: PublicKey, mint: PublicKey): Promise<string> {
+    const ix = await this.program.methods
+      .sweepVault()
+      .accountsPartial({ admin: this.admin.publicKey, round, adminAta: P.ata(mint, this.admin.publicKey), vaultAta: P.ata(mint, round), tokenProgram: TOKEN_PROGRAM_ID })
+      .instruction();
+    return this.sendEr([ix], [this.admin], "sweep_vault");
+  }
+
+  // ------------------------------------------------------------ round chat
+
+  /** ER: post a public message (1-79 printable bytes); the first post creates the ephemeral chat account. */
+  async postChat(round: PublicKey, author: Keypair, text: string): Promise<string> {
+    const ix = await this.program.methods
+      .postChat(text)
+      .accountsPartial({ author: author.publicKey, round, chat: P.chatPda(round), vault: EPHEMERAL_VAULT_ID, magicProgram: MAGIC_PROGRAM_ID })
+      .instruction();
+    return this.sendEr([ix], [author], "post_chat");
+  }
+
+  /** ER, after trading ends: close the chat so its rent returns to the round before close_round. */
+  async closeChat(round: PublicKey): Promise<string> {
+    const ix = await this.program.methods
+      .closeChat()
+      .accountsPartial({ admin: this.admin.publicKey, round, chat: P.chatPda(round), vault: EPHEMERAL_VAULT_ID, magicProgram: MAGIC_PROGRAM_ID })
+      .instruction();
+    return this.sendEr([ix], [this.admin], "close_chat");
+  }
+
+  async fetchChat(round: PublicKey, conn?: Connection): Promise<ChatMessage[]> {
+    const info = await (conn ?? this.teePublic()).getAccountInfo(P.chatPda(round), "processed");
+    return info ? decodeChat(info.data) : [];
   }
 
   // ------------------------------------------------------------ local mock feeds

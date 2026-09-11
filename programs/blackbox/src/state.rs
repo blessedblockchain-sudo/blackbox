@@ -91,6 +91,8 @@ pub struct Round {
     pub step_limit: u32,
     pub entrant_count: u16,
     pub settled_count: u16,
+    /// Activated licenses not yet settled; close_round and sweep_vault require 0.
+    pub open_licenses: u16,
     pub batch_count: u8,
     pub prizes_paid: bool,
     /// Crank guard: scheduled instructions no-op when false.

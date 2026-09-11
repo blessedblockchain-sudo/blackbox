@@ -22,6 +22,7 @@ wait_rpc() { for _ in $(seq 1 60); do rpc_ok "$1" && return 0; sleep 1; done; ec
 
 up() {
   down >/dev/null 2>&1 || true
+  if rpc_ok 8899; then echo "port 8899 still answers after down; stop the old validator first" >&2; return 1; fi
   echo "[base] starting mb-test-validator"
   local extra=()
   # MagicBlock committor program (needed to commit large accounts via buffers); dumped from devnet once.
@@ -60,6 +61,12 @@ down() {
   pkill -f vrf-oracle || true
   pkill -f mb-test-validator || true
   pkill -f solana-test-validator || true
+  # Wait for them to exit, then force-kill stragglers so `up` never health-checks an old validator.
+  for _ in $(seq 1 20); do
+    pgrep -f "solana-test-validator|query-filtering-service|vrf-oracle" >/dev/null || break
+    sleep 0.5
+  done
+  pkill -9 -f "solana-test-validator|mb-test-validator|query-filtering-service|vrf-oracle" || true
   sleep 1
 }
 

@@ -82,7 +82,7 @@ export interface SubmittedStrategy {
 }
 
 export interface SubmittedDecision {
-  action: "hold" | "hot_swapped";
+  action: "hold" | "hot_swapped" | "backed";
   explanation: string;
 }
 

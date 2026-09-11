@@ -26,7 +26,7 @@ use ephemeral_rollups_sdk::consts::{EPHEMERAL_VAULT_ID, MAGIC_PROGRAM_ID, PERMIS
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::{FoldableIntentBuilder, MagicIntentBundleBuilder};
 
-use super::tick::{load_markets, run_book, schedule, BookMut};
+use super::tick::{crank_slack, load_markets, run_book, schedule, BookMut};
 use crate::constants::*;
 use crate::errors::BlackboxError;
 use crate::espl::{self, EataAccounts};
@@ -177,7 +177,8 @@ pub fn delegate_license(ctx: Context<DelegateLicense>) -> Result<()> {
 pub struct ActivateLicense<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
-    #[account(seeds = [ROUND_SEED, &round.id.to_le_bytes()], bump = round.bump)]
+    /// Writable: activation counts the license in `open_licenses`.
+    #[account(mut, seeds = [ROUND_SEED, &round.id.to_le_bytes()], bump = round.bump)]
     pub round: Box<Account<'info, Round>>,
     #[account(mut, seeds = [ENTRANT_SEED, round.key().as_ref(), author_entrant.owner.as_ref()], bump = author_entrant.bump)]
     pub author_entrant: Box<Account<'info, Entrant>>,
@@ -260,6 +261,8 @@ pub fn activate_license(ctx: Context<ActivateLicense>, margin: u64) -> Result<()
         l.peak_equity = margin as i64;
     }
     ctx.accounts.author_entrant.license_count = ctx.accounts.author_entrant.license_count.saturating_add(1);
+    // close_round and sweep_vault wait until every active license has settled.
+    ctx.accounts.round.open_licenses = ctx.accounts.round.open_licenses.saturating_add(1);
     Ok(())
 }
 
@@ -398,7 +401,7 @@ pub fn schedule_license_tick<'info>(ctx: Context<'info, ScheduleLicenseTick<'inf
         infos.push(ctx.remaining_accounts[2 * i + 1].clone());
     }
     let inner = Instruction { program_id: crate::ID, accounts: metas, data: crate::instruction::TickLicense {}.data() };
-    let remaining = r.duration_ticks.saturating_sub(r.tick) as i64 + 1;
+    let remaining = (r.duration_ticks.saturating_sub(r.tick) + crank_slack(r.duration_ticks)) as i64;
     schedule(&ctx.accounts.payer.to_account_info(), &ctx.accounts.magic_program.to_account_info(), task_id, r.tick_interval_ms as i64, remaining.max(1), inner, &infos)
 }
 
@@ -444,9 +447,10 @@ pub fn settle_license<'info>(ctx: Context<'info, SettleLicense<'info>>) -> Resul
     require!(!ctx.accounts.round.live && ctx.accounts.round.status == RoundStatus::Settling, BlackboxError::RoundNotEnded);
     let round_key = ctx.accounts.round.key();
     let n = ctx.accounts.round.n_markets as usize;
-    let (realized, fees, bump) = {
+    let (realized, fees, bump, was_active) = {
         let mut l = ctx.accounts.license.load_mut()?;
         require!(l.settled == 0, BlackboxError::AlreadyFinalized);
+        let was_active = l.active == 1;
         for i in 0..n {
             if l.legs[i].side == 0 {
                 continue;
@@ -459,7 +463,7 @@ pub fn settle_license<'info>(ctx: Context<'info, SettleLicense<'info>>) -> Resul
             l.realized_pnl = l.realized_pnl.saturating_add(r.realized_delta);
         }
         l.settled = 1;
-        (l.realized_pnl, l.accrued_fees, l.bump)
+        (l.realized_pnl, l.accrued_fees, l.bump, was_active)
     };
     let buyer = ctx.accounts.buyer.key();
     let author = ctx.accounts.author.key();
@@ -496,6 +500,10 @@ pub fn settle_license<'info>(ctx: Context<'info, SettleLicense<'info>>) -> Resul
     ctx.accounts.custody_ata.reload()?;
     let rest = ctx.accounts.custody_ata.amount;
     pay(ctx.accounts.custody_ata.to_account_info(), ctx.accounts.buyer_ata.to_account_info(), ctx.accounts.license.to_account_info(), lseeds, rest)?;
+
+    if was_active {
+        ctx.accounts.round.open_licenses = ctx.accounts.round.open_licenses.saturating_sub(1);
+    }
 
     // Scrub, then drop the permission.
     let li = ctx.accounts.license.to_account_info();

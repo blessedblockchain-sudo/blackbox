@@ -27,6 +27,10 @@
         },
         {
           "name": "round",
+          "docs": [
+            "Writable: activation counts the license in `open_licenses`."
+          ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -272,6 +276,83 @@
           }
         }
       ]
+    },
+    {
+      "name": "close_chat",
+      "discriminator": [
+        182,
+        227,
+        125,
+        158,
+        213,
+        132,
+        147,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "round"
+          ]
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "Round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "chat",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "close_round",
@@ -2884,6 +2965,88 @@
       "args": []
     },
     {
+      "name": "post_chat",
+      "discriminator": [
+        47,
+        231,
+        147,
+        123,
+        37,
+        236,
+        132,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "author",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round",
+          "docs": [
+            "Sponsor of the chat account (debited once, refunded by close_chat)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "Round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "chat",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "privatize_entrant",
       "discriminator": [
         59,
@@ -3894,6 +4057,73 @@
       ]
     },
     {
+      "name": "seed_vault",
+      "discriminator": [
+        181,
+        183,
+        221,
+        107,
+        162,
+        110,
+        142,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "round"
+          ]
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "Round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin_ata",
+          "docs": [
+            "The admin's USDC on the ER (their ATA address)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "set_mock_feed",
       "discriminator": [
         250,
@@ -4705,6 +4935,68 @@
       "args": []
     },
     {
+      "name": "sweep_vault",
+      "discriminator": [
+        137,
+        92,
+        9,
+        1,
+        140,
+        237,
+        214,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "round"
+          ]
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "Round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin_ata",
+          "docs": [
+            "The admin's USDC on the ER (their ATA address)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "tick_clock",
       "discriminator": [
         201,
@@ -5255,6 +5547,16 @@
       "code": 6031,
       "name": "VrfNotReady",
       "msg": "VRF randomness not ready"
+    },
+    {
+      "code": 6032,
+      "name": "BadChat",
+      "msg": "chat message must be 1-79 printable bytes"
+    },
+    {
+      "code": 6033,
+      "name": "LicensesOpen",
+      "msg": "every active license must settle first"
     }
   ],
   "types": [
@@ -6085,6 +6387,13 @@
           },
           {
             "name": "settled_count",
+            "type": "u16"
+          },
+          {
+            "name": "open_licenses",
+            "docs": [
+              "Activated licenses not yet settled; close_round and sweep_vault require 0."
+            ],
             "type": "u16"
           },
           {

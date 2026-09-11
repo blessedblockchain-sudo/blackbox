@@ -3,6 +3,10 @@ resolver = "2"
 members = ["programs/*", "crates/*"]
 
 [profile.release]
+# Size over speed: the program is ~0.9 MB at "z" vs ~1.2 MB at 3, which keeps a
+# devnet deploy plus one upgrade buffer within budget. Ticks use a small share
+# of their 200k CU, so the slower code has headroom (scripts/measure-cu.ts).
+opt-level = "z"
 overflow-checks = true
 lto = "fat"
 codegen-units = 1

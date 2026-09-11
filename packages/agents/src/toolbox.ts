@@ -11,7 +11,23 @@ import type { EpisodeKind, SubmittedDecision, SubmittedStrategy, ToolOutcome, To
 /** MCP tools a brain may call, by episode kind. join_round / enter_round are runner-driven. */
 export const ALLOWED_TOOLS: Record<EpisodeKind, string[]> = {
   draft: ["get_round", "get_market_history", "get_bxl_reference", "compile_strategy", "simulate_strategy", "read_scoreboard"],
-  live: ["get_round", "get_market_history", "get_bxl_reference", "compile_strategy", "simulate_strategy", "read_scoreboard", "read_my_position", "read_my_strategy", "hot_swap_strategy", "privacy_check"],
+  live: [
+    "get_round",
+    "get_market_history",
+    "get_bxl_reference",
+    "compile_strategy",
+    "simulate_strategy",
+    "read_scoreboard",
+    "read_my_position",
+    "read_my_strategy",
+    "hot_swap_strategy",
+    "privacy_check",
+    "list_authors",
+    "back_strategy",
+    "read_my_licenses",
+    "read_chat",
+    "post_chat",
+  ],
 };
 
 export const SUBMIT_STRATEGY: ToolSpec = {
@@ -36,7 +52,12 @@ export const SUBMIT_DECISION: ToolSpec = {
   inputSchema: {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["hold", "hot_swapped"], description: "hold keeps the installed strategy; hot_swapped means you called hot_swap_strategy successfully in this loop." },
+      action: {
+        type: "string",
+        enum: ["hold", "hot_swapped", "backed"],
+        description:
+          "hold keeps the installed strategy; hot_swapped means you called hot_swap_strategy successfully in this loop; backed means you licensed another entrant's strategy with back_strategy in this loop.",
+      },
       explanation: { type: "string", description: "Exactly one sentence explaining the decision." },
       label: { type: "string", description: "When hot_swapped: short name of the strategy now installed." },
     },
@@ -75,6 +96,8 @@ export class EpisodeToolbox implements Toolbox {
   readonly specs: ToolSpec[];
   readonly submitted: { strategy?: SubmittedStrategy; decision?: SubmittedDecision } = {};
   swap: SwapRecord | null = null;
+  backed: { author: string; marginUsdc: number } | null = null;
+  posted = false;
   calls = 0;
   private readonly allowed: Set<string>;
 
@@ -103,10 +126,21 @@ export class EpisodeToolbox implements Toolbox {
     if (name === "hot_swap_strategy" && this.swap) {
       return { text: "ERROR: you already hot-swapped in this loop; one swap per loop. Call submit_decision.", isError: true };
     }
+    if (name === "post_chat" && this.posted) {
+      return { text: "ERROR: one chat message per loop. Call submit_decision.", isError: true };
+    }
+    if (name === "back_strategy") {
+      if (this.backed) return { text: "ERROR: you already backed a strategy in this loop; one license per loop. Call submit_decision.", isError: true };
+      const margin = Number(args.margin_usdc);
+      const { min, max } = this.o.marginRange;
+      if (!Number.isFinite(margin) || margin < min || margin > max) return { text: `ERROR: margin_usdc must be between ${min} and ${max} USDC (risk limit).`, isError: true };
+    }
     const res = await this.invoke("model", name, args);
     if (name === "hot_swap_strategy" && !res.isError && typeof args.source === "string") {
       this.swap = { source: args.source, version: strategyVersion(res) };
     }
+    if (name === "back_strategy" && !res.isError) this.backed = { author: String(args.author ?? ""), marginUsdc: Number(args.margin_usdc) };
+    if (name === "post_chat" && !res.isError) this.posted = true;
     return res;
   }
 
@@ -148,12 +182,15 @@ export class EpisodeToolbox implements Toolbox {
   }
 
   private async submitDecision(args: Record<string, unknown>): Promise<ToolOutcome> {
-    const action = args.action === "hot_swapped" ? "hot_swapped" : args.action === "hold" ? "hold" : null;
+    const action = args.action === "hot_swapped" ? "hot_swapped" : args.action === "backed" ? "backed" : args.action === "hold" ? "hold" : null;
     const explanation = typeof args.explanation === "string" ? args.explanation.trim() : "";
-    if (!action) return { text: 'ERROR: action must be "hold" or "hot_swapped".', isError: true };
+    if (!action) return { text: 'ERROR: action must be "hold", "hot_swapped" or "backed".', isError: true };
     if (!explanation) return { text: "ERROR: explanation is required (one sentence).", isError: true };
     if (action === "hot_swapped" && !this.swap) return { text: "ERROR: no successful hot_swap_strategy call in this loop; use action hold, or swap first.", isError: true };
-    if (action === "hold" && this.swap) return { text: "ERROR: you hot-swapped in this loop; use action hot_swapped.", isError: true };
+    if (action === "backed" && !this.backed) return { text: "ERROR: no successful back_strategy call in this loop; use action hold, or back a strategy first.", isError: true };
+    if (action === "hold" && (this.swap || this.backed)) {
+      return { text: `ERROR: you ${this.swap ? "hot-swapped" : "backed a strategy"} in this loop; use action ${this.swap ? "hot_swapped" : "backed"}.`, isError: true };
+    }
     if (this.swap && typeof args.label === "string" && args.label.trim()) this.swap.label = args.label.trim();
     this.submitted.decision = { action, explanation };
     return { text: "Recorded.", isError: false, final: true };

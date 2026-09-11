@@ -193,7 +193,7 @@ describe("MCP -> provider tool bridge", () => {
     it("converts the runner's own submit tools", () => {
       const [strategy, decision] = toGeminiTools([SUBMIT_STRATEGY, SUBMIT_DECISION]);
       expect((strategy.parameters as any).required).to.deep.equal(["source", "margin_usdc", "rationale"]);
-      expect((decision.parameters as any).properties.action).to.deep.include({ type: "STRING", enum: ["hold", "hot_swapped"] });
+      expect((decision.parameters as any).properties.action).to.deep.include({ type: "STRING", enum: ["hold", "hot_swapped", "backed"] });
     });
   });
 

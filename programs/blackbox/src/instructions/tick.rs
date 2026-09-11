@@ -49,6 +49,13 @@ pub fn tick_clock(ctx: Context<TickClock>) -> Result<()> {
     if !r.live {
         return Ok(());
     }
+    // tick_clock is permissionless, so the tick may never run ahead of the time
+    // elapsed since start_round (unix_timestamp has one-second resolution).
+    let now = Clock::get()?.unix_timestamp;
+    let elapsed_ms = now.saturating_sub(r.started_at).max(0) as u64 * 1000 + 1000;
+    if r.tick >= elapsed_ms / r.tick_interval_ms.max(1) as u64 {
+        return Ok(());
+    }
     r.tick = r.tick.saturating_add(1);
     if r.tick >= r.duration_ticks {
         // Time is up: freeze trading. Settlement instructions take over.
@@ -421,6 +428,12 @@ pub(crate) fn blind_price(sum_ret: i64, sum_ret_sq: i64, n: u32, min_bps: u16, m
 
 // ------------------------------------------------------------ scheduling (ER)
 
+/// Extra crank iterations beyond the round's length: a crank that lags wall time
+/// still reaches the last tick, and iterations after the round ends are no-ops.
+pub(crate) fn crank_slack(duration_ticks: u64) -> u64 {
+    duration_ticks / 10 + 20
+}
+
 pub(crate) fn schedule<'info>(
     payer: &AccountInfo<'info>,
     magic_program: &AccountInfo<'info>,
@@ -469,7 +482,7 @@ pub fn schedule_clock(ctx: Context<ScheduleClock>, task_id: i64) -> Result<()> {
         &ctx.accounts.magic_program.to_account_info(),
         task_id,
         r.tick_interval_ms as i64,
-        r.duration_ticks as i64 + 1,
+        (r.duration_ticks + crank_slack(r.duration_ticks)) as i64,
         inner,
         &[ctx.accounts.round.to_account_info()],
     )
@@ -533,7 +546,7 @@ pub fn schedule_entrant_tick<'info>(ctx: Context<'info, ScheduleEntrantTick<'inf
         infos.push(ctx.remaining_accounts[2 * i + 1].clone());
     }
     let inner = Instruction { program_id: crate::ID, accounts: metas, data: crate::instruction::TickEntrant {}.data() };
-    let remaining = r.duration_ticks.saturating_sub(r.tick) as i64 + 1;
+    let remaining = (r.duration_ticks.saturating_sub(r.tick) + crank_slack(r.duration_ticks)) as i64;
     schedule(
         &ctx.accounts.payer.to_account_info(),
         &ctx.accounts.magic_program.to_account_info(),

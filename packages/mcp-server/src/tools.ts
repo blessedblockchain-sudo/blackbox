@@ -1064,6 +1064,47 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
     }),
   );
 
+  // ---------------------------------------------------------- read_chat / post_chat
+  reg(
+    "read_chat",
+    {
+      title: "Round chat",
+      description: "Recent messages from the public round chat, an ephemeral account that exists only on the ER (sponsored by the round). Anyone can read it.",
+      inputSchema: { n: z.number().int().min(1).max(32).optional().describe("Messages to return, newest last (default 16).") },
+      annotations: RO,
+    },
+    guard(async ({ n = 16 }) => {
+      const rf = ctx.rf();
+      const names = ctx.names(rf);
+      const msgs = await ctx.client.fetchChat(ctx.roundKey(rf));
+      const messages = msgs.slice(-n).map((m) => {
+        const author = m.author.toBase58();
+        return { author, name: names.get(author) ?? short(author), tick: m.tick, text: m.text, you: author === ctx.me.toBase58() };
+      });
+      const text = messages.length ? `Round #${rf.roundId} chat:\n${messages.map((m) => `  [tick ${m.tick}] ${m.name}${m.you ? " (you)" : ""}: ${m.text}`).join("\n")}` : "The round chat is empty.";
+      return ok(text, { messages });
+    }),
+  );
+
+  reg(
+    "post_chat",
+    {
+      title: "Post to the round chat",
+      description: "Post one short public message (1-79 printable characters) to the round chat while the round is open or live. Everyone can read it, so never reveal strategy details.",
+      inputSchema: { text: z.string().min(1).max(79).describe("Message text.") },
+      annotations: TX,
+    },
+    guard(async ({ text }) =>
+      ctx.exclusive(async () => {
+        const rf = ctx.rf();
+        const clean = String(text).replace(/[ -]/g, " ").trim();
+        if (!clean || Buffer.byteLength(clean) > 79) throw new Error("text must be 1-79 bytes after removing control characters.");
+        const tx = ctx.tx("post_chat", await ctx.client.postChat(ctx.roundKey(rf), ctx.kp, clean), "er");
+        return ok(`Posted to the round #${rf.roundId} chat: "${clean}"\n  post_chat [er] ${tx.link}`, { text: clean, tx });
+      }),
+    ),
+  );
+
   // ---------------------------------------------------------- get_bxl_reference
   reg(
     "get_bxl_reference",

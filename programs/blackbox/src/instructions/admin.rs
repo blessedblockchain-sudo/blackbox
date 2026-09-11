@@ -139,6 +139,7 @@ pub fn create_round(ctx: Context<CreateRound>, args: CreateRoundArgs) -> Result<
     r.created_at = Clock::get()?.unix_timestamp;
     r.started_at = 0;
     r.ended_at = 0;
+    r.open_licenses = 0;
     r.protocol_fee_bps = ctx.accounts.config.protocol_fee_bps;
     r.license_fee_min_bps = args.license_fee_min_bps;
     r.license_fee_max_bps = args.license_fee_max_bps;
@@ -155,15 +156,17 @@ pub fn create_round(ctx: Context<CreateRound>, args: CreateRoundArgs) -> Result<
 
     // Pre-fund the Round and Scoreboard PDAs with rent for their ephemeral
     // permissions (the Scoreboard is private in Dark mode; the Round keeps a
-    // public permission so it can be flipped if ever needed).
+    // public permission so it can be flipped if ever needed). The Round also
+    // sponsors the round chat, an ephemeral account that exists only on the ER.
     let rent = ephemeral_rollups_sdk::ephemeral_accounts::rent(EphemeralPermission::size_of(1) as u32);
-    for to in [ctx.accounts.round.to_account_info(), ctx.accounts.scoreboard.to_account_info()] {
+    let chat_rent = ephemeral_rollups_sdk::ephemeral_accounts::rent(CHAT_SIZE as u32);
+    for (to, lamports) in [(ctx.accounts.round.to_account_info(), rent + chat_rent), (ctx.accounts.scoreboard.to_account_info(), rent)] {
         anchor_lang::system_program::transfer(
             CpiContext::new(
                 ctx.accounts.system_program.key(),
                 anchor_lang::system_program::Transfer { from: ctx.accounts.admin.to_account_info(), to },
             ),
-            rent,
+            lamports,
         )?;
     }
 

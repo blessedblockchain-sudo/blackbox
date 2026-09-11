@@ -115,6 +115,22 @@ pub mod blackbox {
         instructions::license::undelegate_license(ctx)
     }
 
+    // ---- ER: round chat (an ephemeral account sponsored by the round)
+    pub fn post_chat(ctx: Context<PostChat>, text: String) -> Result<()> {
+        instructions::chat::post_chat(ctx, text)
+    }
+    pub fn close_chat(ctx: Context<CloseChat>) -> Result<()> {
+        instructions::chat::close_chat(ctx)
+    }
+
+    // ---- ER: house bankroll
+    pub fn seed_vault(ctx: Context<VaultAdmin>, amount: u64) -> Result<()> {
+        instructions::vault::seed_vault(ctx, amount)
+    }
+    pub fn sweep_vault(ctx: Context<VaultAdmin>) -> Result<()> {
+        instructions::vault::sweep_vault(ctx)
+    }
+
     // ---- ER: randomness
     pub fn request_round_seed(ctx: Context<RequestRoundSeed>, client_seed: u8) -> Result<()> {
         instructions::vrf::request_round_seed(ctx, client_seed)

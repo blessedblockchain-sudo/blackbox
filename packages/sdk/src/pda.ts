@@ -27,7 +27,9 @@ export const strategyPda = (round: PublicKey, owner: PublicKey) => pda([Buffer.f
 export const positionPda = (round: PublicKey, owner: PublicKey) => pda([Buffer.from("pos"), round.toBuffer(), owner.toBuffer()]);
 export const licensePda = (round: PublicKey, buyer: PublicKey, author: PublicKey) =>
   pda([Buffer.from("lic"), round.toBuffer(), buyer.toBuffer(), author.toBuffer()]);
-export const hallPda =(wallet: PublicKey) => pda([Buffer.from("hall"), wallet.toBuffer()]);
+/** The round chat: an ephemeral account (ER only) sponsored by the round. */
+export const chatPda = (round: PublicKey) => pda([Buffer.from("chat"), round.toBuffer()]);
+export const hallPda = (wallet: PublicKey) => pda([Buffer.from("hall"), wallet.toBuffer()]);
 export const mockFeedPda = (authority: PublicKey, feedId: number) => pda([Buffer.from("mockfeed"), authority.toBuffer(), u32(feedId)]);
 
 export const permissionPda = (account: PublicKey) => permissionPdaFromAccount(account);

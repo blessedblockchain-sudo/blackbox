@@ -398,6 +398,8 @@ pub struct CloseRound<'info> {
 
 pub fn close_round<'info>(ctx: Context<'info, CloseRound<'info>>) -> Result<()> {
     require!(ctx.accounts.round.prizes_paid, BlackboxError::RoundNotEnded);
+    // A license's custody can only settle while the round is on the ER.
+    require!(ctx.accounts.round.open_licenses == 0, BlackboxError::LicensesOpen);
     ctx.accounts.round.status = RoundStatus::Settled;
     // Persist the status change before the bundle snapshots the account data.
     ctx.accounts.round.exit(&crate::ID)?;

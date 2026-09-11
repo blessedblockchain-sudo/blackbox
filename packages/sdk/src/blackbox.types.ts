@@ -33,6 +33,10 @@ export type Blackbox = {
         },
         {
           "name": "round",
+          "docs": [
+            "Writable: activation counts the license in `open_licenses`."
+          ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -278,6 +282,83 @@ export type Blackbox = {
           }
         }
       ]
+    },
+    {
+      "name": "closeChat",
+      "discriminator": [
+        182,
+        227,
+        125,
+        158,
+        213,
+        132,
+        147,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "round"
+          ]
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "chat",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "closeRound",
@@ -2890,6 +2971,88 @@ export type Blackbox = {
       "args": []
     },
     {
+      "name": "postChat",
+      "discriminator": [
+        47,
+        231,
+        147,
+        123,
+        37,
+        236,
+        132,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "author",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round",
+          "docs": [
+            "Sponsor of the chat account (debited once, refunded by close_chat)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "chat",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "privatizeEntrant",
       "discriminator": [
         59,
@@ -3900,6 +4063,73 @@ export type Blackbox = {
       ]
     },
     {
+      "name": "seedVault",
+      "discriminator": [
+        181,
+        183,
+        221,
+        107,
+        162,
+        110,
+        142,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "round"
+          ]
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adminAta",
+          "docs": [
+            "The admin's USDC on the ER (their ATA address)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vaultAta",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "setMockFeed",
       "discriminator": [
         250,
@@ -4711,6 +4941,68 @@ export type Blackbox = {
       "args": []
     },
     {
+      "name": "sweepVault",
+      "discriminator": [
+        137,
+        92,
+        9,
+        1,
+        140,
+        237,
+        214,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "round"
+          ]
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  117,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "round.id",
+                "account": "round"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adminAta",
+          "docs": [
+            "The admin's USDC on the ER (their ATA address)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vaultAta",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "tickClock",
       "discriminator": [
         201,
@@ -5261,6 +5553,16 @@ export type Blackbox = {
       "code": 6031,
       "name": "vrfNotReady",
       "msg": "VRF randomness not ready"
+    },
+    {
+      "code": 6032,
+      "name": "badChat",
+      "msg": "chat message must be 1-79 printable bytes"
+    },
+    {
+      "code": 6033,
+      "name": "licensesOpen",
+      "msg": "every active license must settle first"
     }
   ],
   "types": [
@@ -6091,6 +6393,13 @@ export type Blackbox = {
           },
           {
             "name": "settledCount",
+            "type": "u16"
+          },
+          {
+            "name": "openLicenses",
+            "docs": [
+              "Activated licenses not yet settled; close_round and sweep_vault require 0."
+            ],
             "type": "u16"
           },
           {

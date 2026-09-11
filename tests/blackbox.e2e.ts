@@ -192,6 +192,17 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     rec("entrant 0 margin funded", pos?.margin.toString() === (100n * USDC).toString(), `margin ${pos?.margin}`);
     const r = await bx.fetchRound(round);
     rec("pot collected", r?.pot.toString() === (5n * USDC * BigInt(N)).toString(), `pot ${r?.pot}`);
+    // House bankroll into the vault; it counts toward the public solvency beacon.
+    if (!(await bx.hasErDeposit(admin.publicKey, mint)) || (await bx.erTokenBalance(admin, mint)) < 500n * USDC) {
+      const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, admin.publicKey);
+      await mintTo(bx.base, admin, mint, a.address, admin, 500n * USDC);
+      await bx.depositToEr(admin, mint, 500n * USDC);
+      await bx.waitErBalance(admin, mint, 500n * USDC);
+    }
+    const vb0 = BigInt((await bx.fetchRound(round))!.vaultBalance.toString());
+    await bx.seedVault(round, mint, 500n * USDC);
+    const vb1 = BigInt((await bx.fetchRound(round))!.vaultBalance.toString());
+    rec("house bankroll seeded into the vault", vb1 - vb0 === 500n * USDC, `vault_balance ${Number(vb1) / 1e6} USDC`);
   });
 
   it("7. privacy matrix before trading", async () => {
@@ -263,6 +274,15 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     rec("backer cannot read the strategy it runs", !peek, peek ? "LEAK" : "null");
     const e2 = await bx.fetchEntrant(round, author);
     rec("author license count incremented", Number(e2?.licenseCount) === 1, `${e2?.licenseCount}`);
+  });
+
+  it("8c. round chat: an ephemeral account sponsored by the round", async () => {
+    await bx.postChat(round, users[1], "gm from inside the box");
+    await bx.postChat(round, stranger, "spectator here: no idea what any of you run");
+    const msgs = await bx.fetchChat(round);
+    rec("anyone reads the round chat", msgs.length === 2 && msgs[0].text === "gm from inside the box" && msgs[1].author.equals(stranger.publicKey), msgs.map((m) => m.text).join(" | "));
+    const l1 = await bx.base.getAccountInfo(pda.chatPda(round));
+    rec("chat account exists only on the ER", !l1);
   });
 
   it("9. round runs; mid-round hot-swap; watch the scoreboard", async () => {
@@ -338,24 +358,27 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     for (const u of users) await bx.undelegateEntrant(round, u.publicKey);
     // verify on L1: bodies are zero, hashes published
     await sleep(3000);
-    let allZero = true;
-    let returned = 0;
-    for (const u of users) {
-      for (const key of [pda.entrantPda(round, u.publicKey), pda.strategyPda(round, u.publicKey), pda.positionPda(round, u.publicKey)]) {
-        for (let k = 0; k < 60; k++) {
-          const info = await bx.base.getAccountInfo(key);
-          if (info && info.owner.equals(bx.program.programId)) {
-            returned++;
-            const isEntrant = key.equals(pda.entrantPda(round, u.publicKey));
-            if (!isEntrant && !info.data.subarray(8).every((b) => b === 0)) allZero = false;
-            break;
-          }
-          await sleep(1000);
-        }
+    // Commits can lag: poll all 12 accounts together for up to 3 minutes.
+    const keys = users.flatMap((u) => [pda.entrantPda(round, u.publicKey), pda.strategyPda(round, u.publicKey), pda.positionPda(round, u.publicKey)]);
+    const back = new Map<string, Buffer>();
+    const t0 = Date.now();
+    while (back.size < keys.length && Date.now() - t0 < 180_000) {
+      for (const key of keys) {
+        if (back.has(key.toBase58())) continue;
+        const info = await bx.base.getAccountInfo(key);
+        if (info && info.owner.equals(bx.program.programId)) back.set(key.toBase58(), info.data);
       }
+      if (back.size < keys.length) await sleep(1000);
     }
-    rec("entrant accounts undelegated back to L1", returned === users.length * 3, `${returned}/${users.length * 3}`);
-    rec("private accounts on L1 are all zeros after undelegation", allZero && returned === users.length * 3);
+    const entrantSet = new Set(users.map((u) => pda.entrantPda(round, u.publicKey).toBase58()));
+    const allZero = [...back.entries()].every(([k, d]) => entrantSet.has(k) || d.subarray(8).every((b) => b === 0));
+    const missing = keys.filter((k) => !back.has(k.toBase58())).map((k) => k.toBase58().slice(0, 6));
+    rec(
+      "entrant accounts undelegated back to L1",
+      back.size === keys.length,
+      `${back.size}/${keys.length} in ${Math.round((Date.now() - t0) / 1000)}s${missing.length ? `, missing ${missing.join(",")}` : ""}`,
+    );
+    rec("private accounts on L1 are all zeros after undelegation", allZero && back.size === keys.length);
     const e0 = await bx.program.account.entrant.fetch(pda.entrantPda(round, users[0].publicKey));
     const expected = createHash("sha256").update(Buffer.from(codes[0])).digest();
     rec("published strategy hash matches final bytecode", Buffer.from(e0.strategyHash).equals(expected), Buffer.from(e0.strategyHash).toString("hex").slice(0, 16));
@@ -371,6 +394,13 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     await bx.payPrizes(round, mint, winners);
     const after = await Promise.all(winners.map((w: PublicKey) => bx.erTokenBalance(users.find((u) => u.publicKey.equals(w))!, mint)));
     rec("prizes paid to top 3", after.every((a, i) => a > before[i]), after.map((a, i) => `+${Number(a - before[i]) / 1e6}`).join(" "));
+    const adminBefore = await bx.erTokenBalance(admin, mint);
+    await bx.sweepVault(round, mint);
+    const adminAfter = await bx.erTokenBalance(admin, mint);
+    rec("vault swept to the admin after prizes and licenses", adminAfter > adminBefore, `+${Number(adminAfter - adminBefore) / 1e6} USDC (bankroll, net losses, protocol fee)`);
+    await bx.closeChat(round);
+    const chatAfter = await bx.teePublic().getAccountInfo(pda.chatPda(round), "processed");
+    rec("chat closed before commit (rent back to the round)", !chatAfter || chatAfter.data.length === 0);
     await bx.closeRound(round, 3);
     await bx.waitRoundOnL1(round);
     for (const u of users) await bx.recordHall(round, u.publicKey);

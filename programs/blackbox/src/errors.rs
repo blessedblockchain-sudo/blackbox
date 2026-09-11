@@ -66,4 +66,8 @@ pub enum BlackboxError {
     CrankInactive,
     #[msg("VRF randomness not ready")]
     VrfNotReady,
+    #[msg("chat message must be 1-79 printable bytes")]
+    BadChat,
+    #[msg("every active license must settle first")]
+    LicensesOpen,
 }

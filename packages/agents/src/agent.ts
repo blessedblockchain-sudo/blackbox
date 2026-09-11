@@ -334,7 +334,7 @@ export class Agent {
     this.memory.note = undefined;
     let explanationFallback = "";
     try {
-      const res = await this.o.brain.runEpisode({ kind: "live", task, context: this.context(prefetch), maxRounds: this.o.maxRoundsLive ?? 10, nudge: 'Call submit_decision now with action "hold" or "hot_swapped" and one sentence.' }, tb, this.o.systemPrompt);
+      const res = await this.o.brain.runEpisode({ kind: "live", task, context: this.context(prefetch), maxRounds: this.o.maxRoundsLive ?? 10, nudge: 'Call submit_decision now with action "hold", "hot_swapped" or "backed" and one sentence.' }, tb, this.o.systemPrompt);
       explanationFallback = res.finalText;
       if (res.error) {
         this.transcript!.write({ type: "error", where: `live loop ${this.memory.loops}`, message: res.error });
@@ -347,7 +347,7 @@ export class Agent {
 
     const swapped = tb.swap;
     const decision = tb.submitted.decision ?? {
-      action: swapped ? ("hot_swapped" as const) : ("hold" as const),
+      action: swapped ? ("hot_swapped" as const) : tb.backed ? ("backed" as const) : ("hold" as const),
       explanation: summarize(explanationFallback || "No decision was submitted this loop, so the installed strategy stays.", 240),
     };
     if (swapped) {

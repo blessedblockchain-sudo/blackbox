@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "incremental": false,
+    "isolatedModules": false,
+    "plugins": []
+  },
+  "ts-node": {
+    "transpileOnly": true
+  }
+}

@@ -49,9 +49,21 @@ export const Screen: React.FC<{ children: React.ReactNode; background?: string }
 export const Caption: React.FC<{ text: string; sub?: string; delay?: number }> = ({ text, sub, delay = 0 }) => {
   const enter = useEnter(delay);
   return (
-    <div style={{ position: "absolute", left: 96, right: 96, bottom: 84, ...enter }}>
-      <div style={{ fontSize: 46, lineHeight: 1.2, fontWeight: 600, letterSpacing: -0.5, textShadow: "0 2px 24px rgba(0,0,0,0.8)" }}>{text}</div>
-      {sub ? <div style={{ marginTop: 12, fontSize: 28, color: C.fgMuted, fontFamily: MONO }}>{sub}</div> : null}
+    <div
+      style={{
+        position: "absolute",
+        left: 120,
+        right: 120,
+        bottom: 34,
+        padding: "18px 26px",
+        borderRadius: 10,
+        background: "rgba(5,5,6,0.92)",
+        border: `1px solid ${C.edge}`,
+        ...enter,
+      }}
+    >
+      <div style={{ fontSize: 42, lineHeight: 1.15, fontWeight: 600, letterSpacing: -0.5 }}>{text}</div>
+      {sub ? <div style={{ marginTop: 10, fontSize: 25, color: C.fgMuted, fontFamily: MONO }}>{sub}</div> : null}
     </div>
   );
 };
@@ -63,8 +75,8 @@ export const Slug: React.FC<{ text: string; delay?: number }> = ({ text, delay =
     <div
       style={{
         position: "absolute",
-        top: 56,
-        left: 96,
+        top: 18,
+        left: 120,
         fontFamily: MONO,
         fontSize: 22,
         color: C.fgMuted,
@@ -87,9 +99,9 @@ export const BrowserFrame: React.FC<{ url: string; children: React.ReactNode; de
     <div
       style={{
         position: "absolute",
-        left: 80,
-        right: 80,
-        top: 120,
+        left: 180,
+        right: 180,
+        top: 72,
         borderRadius: 14,
         overflow: "hidden",
         border: `1px solid ${C.edgeStrong}`,

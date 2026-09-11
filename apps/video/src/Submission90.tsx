@@ -31,7 +31,7 @@ export const Submission90: React.FC = () => (
     {/* 0:25 - 0:40 the privacy proof */}
     <Sequence from={750} durationInFrames={450}>
       <Slug text="every read path we know of" />
-      <Shot name="proof" url="blackbox.app/proof" delay={6} />
+      <Shot name="proof" url="blackbox.app/proof" startFrom={330} delay={6} />
       <Caption text="No token: null. A stranger's token: null. A rival in the same round: null." sub={`the read matrix, run live on devnet · ${FACTS.proofRun} as designed`} delay={20} />
     </Sequence>
 

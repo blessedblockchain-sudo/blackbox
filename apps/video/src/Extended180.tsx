@@ -52,7 +52,7 @@ export const Extended180: React.FC = () => (
 
     <Sequence from={1680} durationInFrames={450}>
       <Slug text="every read path we know of" />
-      <Shot name="proof" url="blackbox.app/proof" delay={6} />
+      <Shot name="proof" url="blackbox.app/proof" startFrom={330} delay={6} />
       <Caption text="No token, a stranger, a rival, the upload transaction, the L1 copy, the delegation records." sub={`${FACTS.proofRun} behaved as designed, in 9.6 s`} delay={20} />
     </Sequence>
 

@@ -1,0 +1,17 @@
+[package]
+name = "bxvm"
+version = "0.1.0"
+edition = "2021"
+description = "BLACKBOX strategy VM: a deterministic no_std stack machine executed inside the Private Ephemeral Rollup"
+license = "MIT"
+
+[lib]
+name = "bxvm"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+
+[dev-dependencies]

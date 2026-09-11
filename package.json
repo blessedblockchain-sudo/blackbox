@@ -1,0 +1,39 @@
+{
+  "name": "blackbox",
+  "private": true,
+  "version": "0.1.0",
+  "description": "BLACKBOX \u2014 alpha you can't read. Strategies executed inside a MagicBlock Private Ephemeral Rollup.",
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "build": "anchor build",
+    "test:local": "PROVIDER_ENDPOINT=http://localhost:8899 WS_ENDPOINT=ws://localhost:8900 EPHEMERAL_PROVIDER_ENDPOINT=http://localhost:7799 EPHEMERAL_WS_ENDPOINT=ws://localhost:7800 TEE_PROVIDER_ENDPOINT=http://localhost:6699 TEE_WS_ENDPOINT=ws://localhost:6700 VALIDATOR=mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts",
+    "test:devnet": "PROVIDER_ENDPOINT=https://api.devnet.solana.com TEE_PROVIDER_ENDPOINT=https://devnet-tee.magicblock.app TEE_WS_ENDPOINT=wss://devnet-tee.magicblock.app VALIDATOR=MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts",
+    "lint": "prettier --check ."
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "services/*"
+  ],
+  "devDependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@magicblock-labs/ephemeral-rollups-sdk": "^0.17.0",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.0",
+    "@types/bn.js": "^5.1.6",
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.0.0",
+    "chai": "^4.5.0",
+    "mocha": "^10.8.2",
+    "prettier": "^3.5.0",
+    "ts-mocha": "^10.1.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "uuid": "^11.1.0"
+    }
+  }
+}

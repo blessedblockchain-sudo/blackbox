@@ -1,0 +1,30 @@
+[package]
+name = "spike"
+version = "0.1.0"
+description = "BLACKBOX Phase 0 integration spike: PER permissions + crank + oracle + eSPL + ephemeral accounts + VRF on the TEE validator"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "spike"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "=1.1.2", features = ["init-if-needed"] }
+anchor-spl = { version = "=1.1.2", features = ["token"] }
+magicblock-magic-program-api = "0.10.1"
+bincode = "1.3.3"
+ephemeral-rollups-sdk = { version = "0.17.0", features = ["anchor", "access-control", "crank", "vrf"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

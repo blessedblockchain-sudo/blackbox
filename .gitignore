@@ -1,0 +1,17 @@
+.anchor
+.DS_Store
+target
+**/*.rs.bk
+node_modules
+test-ledger
+.yarn
+dist
+.env
+.env.*
+!.env.example
+runs/
+*.log
+.turbo
+.next
+.mb/
+test-ledger/

@@ -52,6 +52,8 @@ More devnet evidence from the same 42/42 run (round #1 `EHfSy9AYJ6ZBrdSEEa7GUroy
 
 Rollup transactions (`set_strategy`, `activate_license`, `schedule_clock`, `post_chat`, `close_round`, …) ran on `https://devnet-tee.magicblock.app`. Opening them needs a TEE auth token for a member of the accounts involved; that gating is the privacy guarantee. Example (owner token required): `close_round` `ikCspFk38cxqed3szcqiXeP6R1mNkYgGAtDADrbxQfWHoYdh8vGhUCZ94CfS7NCF5ukcWAqEWAre4AYX9SKJCTq`.
 
-## Program addresses
-- BLACKBOX (devnet): `BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27` — https://explorer.solana.com/address/BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27?cluster=devnet
-- Phase 0 verification spike (devnet, 32/32): `94gGoaBYDU4B9dmxEoJFVST8gszK5YbUqoh7HCxUAbhp`
+## Program addresses (the form takes several; add both)
+1. `BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27` — BLACKBOX, the program every round runs on (devnet) — https://explorer.solana.com/address/BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27?cluster=devnet
+2. `94gGoaBYDU4B9dmxEoJFVST8gszK5YbUqoh7HCxUAbhp` — Phase 0 verification program behind the 32/32 devnet-tee checks (optional, evidence only) — https://explorer.solana.com/address/94gGoaBYDU4B9dmxEoJFVST8gszK5YbUqoh7HCxUAbhp?cluster=devnet
+
+Everything else BLACKBOX calls is MagicBlock's or Solana's, not ours: delegation `DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh`, permissions `ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1`, Ephemeral SPL `SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2`, oracle `PriCems5tHihc6UDXDjzjeawomAwBduWMGAi8ZUjppd`, VRF `Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz`.

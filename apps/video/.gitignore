@@ -1,0 +1,5 @@
+node_modules
+out
+# Debug frames from scripts/capture.mjs --dump; the shot MP4s in public/capture are tracked.
+public/capture/check-*.png
+public/capture/dump_*.png

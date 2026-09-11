@@ -1,0 +1,27 @@
+{
+  "name": "@blackbox/video",
+  "private": true,
+  "version": "0.1.0",
+  "description": "BLACKBOX submission video, rendered from real devnet footage with Remotion.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render:90": "remotion render src/index.ts Submission90 out/blackbox-90s.mp4 --codec h264 --crf 18 --color-space bt709",
+    "render:extended": "remotion render src/index.ts Extended180 out/blackbox-3min.mp4 --codec h264 --crf 18 --color-space bt709",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.0",
+    "@remotion/media-utils": "^4.0.0",
+    "@remotion/transitions": "^4.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "puppeteer-core": "^24.43.1",
+    "typescript": "^5.7.0"
+  }
+}

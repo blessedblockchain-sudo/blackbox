@@ -59,11 +59,11 @@ pub struct CreateRound<'info> {
     #[account(
         init,
         payer = admin,
-        space = 8 + Scoreboard::INIT_SPACE,
+        space = Scoreboard::SIZE,
         seeds = [SCOREBOARD_SEED, round.key().as_ref()],
         bump
     )]
-    pub scoreboard: Box<Account<'info, Scoreboard>>,
+    pub scoreboard: AccountLoader<'info, Scoreboard>,
     #[account(address = config.usdc_mint)]
     pub mint: Box<Account<'info, Mint>>,
     /// The round's custody token account (vault + pot), owned by the Round PDA.
@@ -126,7 +126,9 @@ pub fn create_round(ctx: Context<CreateRound>, args: CreateRoundArgs) -> Result<
     r.tick = 0;
     r.step_limit = args.step_limit;
     r.entrant_count = 0;
+    r.settled_count = 0;
     r.batch_count = 0;
+    r.prizes_paid = false;
     r.live = false;
     r.vrf_seed = [0u8; 32];
     r.vrf_ready = false;
@@ -143,12 +145,13 @@ pub fn create_round(ctx: Context<CreateRound>, args: CreateRoundArgs) -> Result<
     r.validator = ctx.accounts.validator.key();
     r.bump = ctx.bumps.round;
 
-    let b = &mut ctx.accounts.scoreboard;
-    b.round = ctx.accounts.round.key();
-    b.n = 0;
-    b.entries = [ScoreEntry::default(); MAX_ENTRANTS];
-    b.finalized = false;
-    b.bump = ctx.bumps.scoreboard;
+    {
+        let mut b = ctx.accounts.scoreboard.load_init()?;
+        b.round = ctx.accounts.round.key();
+        b.n = 0;
+        b.finalized = 0;
+        b.bump = ctx.bumps.scoreboard;
+    }
 
     // Pre-fund the Round and Scoreboard PDAs with rent for their ephemeral
     // permissions (the Scoreboard is private in Dark mode; the Round keeps a
@@ -196,11 +199,11 @@ pub struct AddMarket<'info> {
     #[account(
         init,
         payer = admin,
-        space = 8 + Market::INIT_SPACE,
+        space = Market::SIZE,
         seeds = [MARKET_SEED, round.key().as_ref(), &[index]],
         bump
     )]
-    pub market: Box<Account<'info, Market>>,
+    pub market: AccountLoader<'info, Market>,
     /// CHECK: oracle price account; validated on the ER at tick time (on L1 it
     /// is owned by the delegation program).
     pub feed: UncheckedAccount<'info>,
@@ -222,8 +225,9 @@ pub fn add_market(ctx: Context<AddMarket>, index: u8, cfg: MarketConfig) -> Resu
     r.markets[index as usize] = c;
     r.n_markets += 1;
 
-    let m = &mut ctx.accounts.market;
-    m.round = r.key();
+    let round_key = r.key();
+    let mut m = ctx.accounts.market.load_init()?;
+    m.round = round_key;
     m.index = index;
     m.feed = c.feed;
     m.decimals = c.decimals;

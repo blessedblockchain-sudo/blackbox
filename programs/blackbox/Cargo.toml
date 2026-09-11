@@ -26,6 +26,7 @@ ephemeral-rollups-sdk = { version = "0.17.0", features = ["anchor", "access-cont
 magicblock-magic-program-api = "0.10.1"
 bincode = "1.3.3"
 solana-sha256-hasher = "3.1"
+bytemuck = { version = "1.17", features = ["derive", "min_const_generics"] }
 bxvm = { path = "../../crates/bxvm", default-features = false }
 
 [lints.rust]

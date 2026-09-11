@@ -6,9 +6,12 @@
 //!                VM, applies its trades to the private Position, marks equity,
 //!                liquidates if needed and updates the scoreboard.
 //!
-//! Both are scheduled on MagicBlock's Native Crank inside the (TEE) ER, with a
-//! fixed account list: round, scoreboard, then `2 * n_markets` accounts
-//! (market_i, feed_i) as remaining accounts, then entrant, strategy, position.
+//! Both are scheduled on MagicBlock's Native Crank inside the (TEE) ER.
+//! `tick_entrant` accounts: round, scoreboard, entrant, strategy, position,
+//! then remaining = [market_0, feed_0, market_1, feed_1, ...].
+//!
+//! All large accounts are zero-copy (`AccountLoader`), so nothing big is ever
+//! copied onto the 4 KB SBF stack.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
@@ -65,18 +68,16 @@ pub struct TickEntrant<'info> {
     /// CHECK: raw-deserialized (crank pattern)
     #[account(mut, owner = crate::ID)]
     pub round: UncheckedAccount<'info>,
-    /// CHECK: raw-deserialized
-    #[account(mut, owner = crate::ID)]
-    pub scoreboard: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub scoreboard: AccountLoader<'info, Scoreboard>,
     /// CHECK: raw-deserialized
     #[account(mut, owner = crate::ID)]
     pub entrant: UncheckedAccount<'info>,
-    /// CHECK: raw-deserialized (private)
-    #[account(owner = crate::ID)]
-    pub strategy: UncheckedAccount<'info>,
-    /// CHECK: raw-deserialized (private)
-    #[account(mut, owner = crate::ID)]
-    pub position: UncheckedAccount<'info>,
+    /// Private strategy (read-only here).
+    pub strategy: AccountLoader<'info, Strategy>,
+    /// Private position.
+    #[account(mut)]
+    pub position: AccountLoader<'info, Position>,
     // remaining_accounts: [market_0, feed_0, market_1, feed_1, ...]
 }
 
@@ -89,36 +90,38 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
     if !round.live {
         return Ok(());
     }
+    let round_key = round_info.key();
     let n = round.n_markets as usize;
     require!(ctx.remaining_accounts.len() >= 2 * n, BlackboxError::BadMarketIndex);
     let now = Clock::get()?.unix_timestamp;
     let tick = round.tick;
 
     // 1) Markets: refresh indicators once per tick (first entrant to arrive does it).
-    let mut markets: [Option<Market>; MAX_MARKETS] = Default::default();
-    let mut market_infos: [Option<&AccountInfo<'info>>; MAX_MARKETS] = [None; MAX_MARKETS];
+    let mut loaders: Vec<AccountLoader<'info, Market>> = Vec::with_capacity(n);
     for i in 0..n {
         let m_info = &ctx.remaining_accounts[2 * i];
         let f_info = &ctx.remaining_accounts[2 * i + 1];
-        require_keys_eq!(*m_info.owner, crate::ID, BlackboxError::BadMarketIndex);
-        let mut m = {
-            let d = m_info.try_borrow_data()?;
-            Market::try_deserialize(&mut &d[..])?
-        };
-        require_keys_eq!(m.round, round_info.key(), BlackboxError::RoundMismatch);
-        require!(m.index as usize == i, BlackboxError::BadMarketIndex);
-        if m.last_tick < tick || m.mark == 0 {
-            let px = oracle::read_price(f_info, &m.feed, m.decimals, now)?;
-            perps::update_indicators(&mut m, px.price, tick, px.publish_time)?;
-            if tick > 0 && tick % FUNDING_PERIOD_TICKS == 0 && m.last_funding_tick < tick {
-                perps::accrue_funding(&mut m, FUNDING_RATE_BPS_AT_FULL_SKEW)?;
-                m.last_funding_tick = tick;
+        let loader = AccountLoader::<Market>::try_from(m_info)?;
+        {
+            let mut m = loader.load_mut()?;
+            require_keys_eq!(m.round, round_key, BlackboxError::RoundMismatch);
+            require!(m.index as usize == i, BlackboxError::BadMarketIndex);
+            if m.last_tick < tick || m.mark == 0 {
+                let feed = m.feed;
+                let decimals = m.decimals;
+                let px = oracle::read_price(f_info, &feed, decimals, now)?;
+                perps::update_indicators(&mut m, px.price, tick, px.publish_time)?;
+                if tick > 0 && tick % FUNDING_PERIOD_TICKS == 0 && m.last_funding_tick < tick {
+                    perps::accrue_funding(&mut m, FUNDING_RATE_BPS_AT_FULL_SKEW)?;
+                    m.last_funding_tick = tick;
+                }
             }
-            let mut d = m_info.try_borrow_mut_data()?;
-            m.try_serialize(&mut &mut d[..])?;
         }
-        markets[i] = Some(m);
-        market_infos[i] = Some(m_info);
+        loaders.push(loader);
+    }
+    let mut ms: Vec<std::cell::RefMut<Market>> = Vec::with_capacity(n);
+    for l in loaders.iter() {
+        ms.push(l.load_mut()?);
     }
 
     // 2) Entrant + private state.
@@ -127,53 +130,48 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
         let d = entrant_info.try_borrow_data()?;
         Entrant::try_deserialize(&mut &d[..])?
     };
-    require_keys_eq!(entrant.round, round_info.key(), BlackboxError::RoundMismatch);
-    let pos_info = ctx.accounts.position.to_account_info();
-    let mut position = {
-        let d = pos_info.try_borrow_data()?;
-        Position::try_deserialize(&mut &d[..])?
-    };
+    require_keys_eq!(entrant.round, round_key, BlackboxError::RoundMismatch);
+    let strategy = ctx.accounts.strategy.load()?;
+    let mut pos_ref = ctx.accounts.position.load_mut()?;
+    let position: &mut Position = &mut pos_ref;
     require_keys_eq!(position.owner, entrant.owner, BlackboxError::OwnerMismatch);
-    let strategy = {
-        let d = ctx.accounts.strategy.try_borrow_data()?;
-        Strategy::try_deserialize(&mut &d[..])?
-    };
     require_keys_eq!(strategy.owner, entrant.owner, BlackboxError::OwnerMismatch);
+    require_keys_eq!(position.round, round_key, BlackboxError::RoundMismatch);
 
     let mut marks = [0i64; MAX_MARKETS];
     let mut findex = [0i64; MAX_MARKETS];
     let mut maint = [0u16; MAX_MARKETS];
     for i in 0..n {
-        let m = markets[i].as_ref().unwrap();
-        marks[i] = m.mark;
-        findex[i] = m.funding_index;
-        maint[i] = m.maintenance_bps;
+        marks[i] = ms[i].mark;
+        findex[i] = ms[i].funding_index;
+        maint[i] = ms[i].maintenance_bps;
     }
 
     let mut equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
 
     // 3) Run the strategy (only if alive, funded, and it has code).
-    if entrant.alive && !position.liquidated && position.margin > 0 && strategy.len > 0 {
+    if entrant.alive && position.liquidated == 0 && position.margin > 0 && strategy.len > 0 {
         // Free margin = equity - Σ size_i / max_leverage_i (initial margin in use).
         let mut used: i128 = 0;
         for i in 0..n {
             if position.legs[i].side != 0 {
-                let lev = markets[i].as_ref().map(|m| m.max_leverage as i128).unwrap_or(1).max(1);
-                used += position.legs[i].size as i128 / lev;
+                used += position.legs[i].size as i128 / (ms[i].max_leverage.max(1) as i128);
             }
         }
         let free = (equity as i128 - used).clamp(0, i64::MAX as i128) as i64;
-        let host = TickHost {
-            markets: &markets,
-            n_markets: round.n_markets,
-            legs: &position.legs,
-            equity,
-            free_margin: free.max(0),
-            tick,
-            rand: TickHost::derive_rand(&round.vrf_seed, &entrant.owner, tick),
+        let res = {
+            let refs: Vec<&Market> = ms.iter().map(|m| &**m).collect();
+            let host = TickHost {
+                markets: &refs,
+                legs: &position.legs,
+                equity,
+                free_margin: free,
+                tick,
+                rand: TickHost::derive_rand(&round.vrf_seed, &entrant.owner, tick),
+            };
+            let step_limit = strategy.step_limit.min(round.step_limit).max(1);
+            bxvm::execute(&strategy.bytecode[..strategy.len as usize], &host, &mut position.mem, step_limit)
         };
-        let step_limit = strategy.step_limit.min(round.step_limit).max(1);
-        let res = bxvm::execute(&strategy.bytecode[..strategy.len as usize], &host, &mut position.mem, step_limit);
         position.last_steps = res.steps;
         if let Some(f) = res.fault {
             position.last_fault = f as u8 + 1;
@@ -182,51 +180,7 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
             position.last_fault = 0;
             position.last_fault_pc = 0;
             for action in res.actions() {
-                match action {
-                    bxvm::Action::CloseAll => {
-                        for i in 0..n {
-                            if position.legs[i].side != 0 {
-                                let m = markets[i].as_mut().unwrap();
-                                let other = other_notional(&position.legs, i);
-                                let r = perps::trade_to_target(m, &mut position.legs[i], 0, equity, other)?;
-                                position.realized_pnl = position.realized_pnl.saturating_add(r.realized_delta);
-                                if r.traded {
-                                    position.trade_count = position.trade_count.saturating_add(1);
-                                }
-                            }
-                        }
-                    }
-                    bxvm::Action::Close { market } => {
-                        let i = market as usize;
-                        if i < n && position.legs[i].side != 0 {
-                            let m = markets[i].as_mut().unwrap();
-                            let other = other_notional(&position.legs, i);
-                            let r = perps::trade_to_target(m, &mut position.legs[i], 0, equity, other)?;
-                            position.realized_pnl = position.realized_pnl.saturating_add(r.realized_delta);
-                            if r.traded {
-                                position.trade_count = position.trade_count.saturating_add(1);
-                            }
-                        }
-                    }
-                    bxvm::Action::Long { market, size_bps } | bxvm::Action::Short { market, size_bps } => {
-                        let i = market as usize;
-                        if i >= n {
-                            continue;
-                        }
-                        let sign: i128 = if matches!(action, bxvm::Action::Long { .. }) { 1 } else { -1 };
-                        let target = (equity.max(0) as i128 * size_bps as i128 / BPS as i128) * sign;
-                        let m = markets[i].as_mut().unwrap();
-                        let other = other_notional(&position.legs, i);
-                        // A rejected trade (leverage/OI cap) is skipped, not a fault.
-                        if let Ok(r) = perps::trade_to_target(m, &mut position.legs[i], target, equity, other) {
-                            position.realized_pnl = position.realized_pnl.saturating_add(r.realized_delta);
-                            if r.traded {
-                                position.trade_count = position.trade_count.saturating_add(1);
-                            }
-                        }
-                    }
-                }
-                // refresh equity after each fill
+                apply_action(action, &mut ms, position, equity, n)?;
                 equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
             }
         }
@@ -235,17 +189,15 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
     // 4) Mark to market, maintenance check, liquidation.
     equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
     let (_, maint_req) = perps::notional_and_maintenance(&position.legs, &maint);
-    if !position.liquidated && position.margin > 0 && (equity as i128) < maint_req {
-        // Close everything at fill prices; whatever is left is the entrant's.
+    if position.liquidated == 0 && position.margin > 0 && (equity as i128) < maint_req {
         for i in 0..n {
             if position.legs[i].side != 0 {
-                let m = markets[i].as_mut().unwrap();
-                let r = perps::trade_to_target(m, &mut position.legs[i], 0, i64::MAX / 4, 0)?;
+                let r = perps::trade_to_target(&mut ms[i], &mut position.legs[i], 0, equity, 0)?;
                 position.realized_pnl = position.realized_pnl.saturating_add(r.realized_delta);
             }
         }
         equity = perps::equity(position.margin, position.realized_pnl, &position.legs, &marks, &findex)?;
-        position.liquidated = true;
+        position.liquidated = 1;
         entrant.alive = false;
         if equity < 0 {
             // Vault absorbs the shortfall.
@@ -265,51 +217,90 @@ pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()
     if equity > position.peak_equity {
         position.peak_equity = equity;
     }
+    let trades = position.trade_count;
+    drop(pos_ref);
+    drop(strategy);
+    drop(ms);
 
-    // 6) Persist markets touched by trades, position, entrant.
-    for i in 0..n {
-        if let (Some(m), Some(info)) = (markets[i].as_ref(), market_infos[i]) {
-            let mut d = info.try_borrow_mut_data()?;
-            m.try_serialize(&mut &mut d[..])?;
-        }
-    }
-    {
-        let mut d = pos_info.try_borrow_mut_data()?;
-        position.try_serialize(&mut &mut d[..])?;
-    }
+    // 6) Persist the entrant.
     {
         let mut d = entrant_info.try_borrow_mut_data()?;
         entrant.try_serialize(&mut &mut d[..])?;
     }
 
     // 7) Scoreboard: public equity, alive, trades (no positions, no code).
-    let sb_info = ctx.accounts.scoreboard.to_account_info();
-    let mut sb = {
-        let d = sb_info.try_borrow_data()?;
-        Scoreboard::try_deserialize(&mut &d[..])?
-    };
-    let idx = entrant.index as usize;
-    require!(idx < MAX_ENTRANTS, BlackboxError::ScoreboardFull);
-    if (sb.n as usize) <= idx {
-        sb.n = (idx + 1) as u16;
-    }
-    sb.entries[idx].owner = entrant.owner;
-    sb.entries[idx].equity = equity;
-    sb.entries[idx].deposited = entrant.deposited;
-    sb.entries[idx].alive = entrant.alive;
-    sb.entries[idx].trades = position.trade_count;
-    let mut total: i128 = 0;
-    for e in sb.entries.iter().take(sb.n as usize) {
-        total += e.equity as i128;
-    }
-    round.total_equity = total.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
     {
-        let mut d = sb_info.try_borrow_mut_data()?;
-        sb.try_serialize(&mut &mut d[..])?;
+        let mut sb = ctx.accounts.scoreboard.load_mut()?;
+        require_keys_eq!(sb.round, round_key, BlackboxError::RoundMismatch);
+        let idx = entrant.index as usize;
+        require!(idx < MAX_ENTRANTS, BlackboxError::ScoreboardFull);
+        if (sb.n as usize) <= idx {
+            sb.n = (idx + 1) as u16;
+        }
+        let e = &mut sb.entries[idx];
+        e.owner = entrant.owner;
+        e.equity = equity;
+        e.deposited = entrant.deposited;
+        e.alive = entrant.alive as u8;
+        e.trades = trades;
+        let mut total: i128 = 0;
+        for e in sb.entries.iter().take(sb.n as usize) {
+            total += e.equity as i128;
+        }
+        round.total_equity = total.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
     }
     {
         let mut d = round_info.try_borrow_mut_data()?;
         round.try_serialize(&mut &mut d[..])?;
+    }
+    Ok(())
+}
+
+/// Apply one VM action to the position. Rejected increases (leverage or OI
+/// cap) are skipped; they never fault the tick.
+fn apply_action(
+    action: bxvm::Action,
+    ms: &mut [std::cell::RefMut<Market>],
+    position: &mut Position,
+    equity: i64,
+    n: usize,
+) -> Result<()> {
+    let mut trade = |i: usize, target: i128, position: &mut Position| -> Result<()> {
+        let other = other_notional(&position.legs, i);
+        match perps::trade_to_target(&mut ms[i], &mut position.legs[i], target, equity, other) {
+            Ok(r) => {
+                position.realized_pnl = position.realized_pnl.saturating_add(r.realized_delta);
+                if r.traded {
+                    position.trade_count = position.trade_count.saturating_add(1);
+                }
+                Ok(())
+            }
+            Err(e) if target == 0 => Err(e),
+            Err(_) => Ok(()),
+        }
+    };
+    match action {
+        bxvm::Action::CloseAll => {
+            for i in 0..n {
+                if position.legs[i].side != 0 {
+                    trade(i, 0, position)?;
+                }
+            }
+        }
+        bxvm::Action::Close { market } => {
+            let i = market as usize;
+            if i < n && position.legs[i].side != 0 {
+                trade(i, 0, position)?;
+            }
+        }
+        bxvm::Action::Long { market, size_bps } | bxvm::Action::Short { market, size_bps } => {
+            let i = market as usize;
+            if i < n {
+                let sign: i128 = if matches!(action, bxvm::Action::Long { .. }) { 1 } else { -1 };
+                let target = (equity.max(0) as i128 * size_bps as i128 / BPS as i128) * sign;
+                trade(i, target, position)?;
+            }
+        }
     }
     Ok(())
 }
@@ -326,7 +317,7 @@ fn other_notional(legs: &[Leg; MAX_MARKETS], except: usize) -> i128 {
 
 // ------------------------------------------------------------ scheduling (ER)
 
-fn schedule<'info>(
+pub(crate) fn schedule<'info>(
     payer: &AccountInfo<'info>,
     magic_program: &AccountInfo<'info>,
     task_id: i64,
@@ -335,10 +326,11 @@ fn schedule<'info>(
     inner: Instruction,
     inner_infos: &[AccountInfo<'info>],
 ) -> Result<()> {
-    let args = ScheduleTaskArgs { task_id, execution_interval_millis: interval_ms, iterations, instructions: vec![inner.clone()] };
+    let metas_inner = inner.accounts.clone();
+    let args = ScheduleTaskArgs { task_id, execution_interval_millis: interval_ms, iterations, instructions: vec![inner] };
     let data = bincode::serialize(&MagicBlockInstruction::ScheduleTask(args)).map_err(|_| error!(BlackboxError::SerializeFailed))?;
     let mut metas = vec![AccountMeta::new(payer.key(), true), AccountMeta::new(payer.key(), true)];
-    metas.extend(inner.accounts.iter().cloned());
+    metas.extend(metas_inner);
     let ix = Instruction { program_id: MAGIC_PROGRAM_ID, accounts: metas, data };
     let mut infos: Vec<AccountInfo<'info>> = vec![payer.clone(), payer.clone()];
     infos.extend(inner_infos.iter().cloned());
@@ -385,15 +377,16 @@ pub struct ScheduleEntrantTick<'info> {
     pub payer: Signer<'info>,
     #[account(seeds = [ROUND_SEED, &round.id.to_le_bytes()], bump = round.bump)]
     pub round: Box<Account<'info, Round>>,
-    #[account(mut, seeds = [SCOREBOARD_SEED, round.key().as_ref()], bump = scoreboard.bump)]
-    pub scoreboard: Box<Account<'info, Scoreboard>>,
+    /// CHECK: scoreboard PDA (only its key is needed)
+    #[account(mut, seeds = [SCOREBOARD_SEED, round.key().as_ref()], bump)]
+    pub scoreboard: UncheckedAccount<'info>,
     #[account(seeds = [ENTRANT_SEED, round.key().as_ref(), entrant.owner.as_ref()], bump = entrant.bump)]
     pub entrant: Box<Account<'info, Entrant>>,
     /// CHECK: strategy PDA (private; only its key is needed here)
     #[account(seeds = [STRATEGY_SEED, round.key().as_ref(), entrant.owner.as_ref()], bump)]
     pub strategy: UncheckedAccount<'info>,
     /// CHECK: position PDA
-    #[account(seeds = [POSITION_SEED, round.key().as_ref(), entrant.owner.as_ref()], bump)]
+    #[account(mut, seeds = [POSITION_SEED, round.key().as_ref(), entrant.owner.as_ref()], bump)]
     pub position: UncheckedAccount<'info>,
     /// CHECK: magic program
     #[account(address = MAGIC_PROGRAM_ID)]
@@ -408,11 +401,14 @@ pub fn schedule_entrant_tick<'info>(ctx: Context<'info, ScheduleEntrantTick<'inf
     require!(r.status == RoundStatus::Live, BlackboxError::NotLive);
     let n = r.n_markets as usize;
     require!(ctx.remaining_accounts.len() == 2 * n, BlackboxError::BadMarketIndex);
+    let round_key = r.key();
     for i in 0..n {
+        let (expected_market, _) = Pubkey::find_program_address(&[MARKET_SEED, round_key.as_ref(), &[i as u8]], &crate::ID);
+        require_keys_eq!(ctx.remaining_accounts[2 * i].key(), expected_market, BlackboxError::BadMarketIndex);
         require_keys_eq!(ctx.remaining_accounts[2 * i + 1].key(), r.markets[i].feed, BlackboxError::BadOracle);
     }
     let mut metas = vec![
-        AccountMeta::new(r.key(), false),
+        AccountMeta::new(round_key, false),
         AccountMeta::new(ctx.accounts.scoreboard.key(), false),
         AccountMeta::new(ctx.accounts.entrant.key(), false),
         AccountMeta::new_readonly(ctx.accounts.strategy.key(), false),

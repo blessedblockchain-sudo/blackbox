@@ -16,8 +16,8 @@ pub struct FundEntrant<'info> {
     pub round: Box<Account<'info, Round>>,
     #[account(mut, seeds = [ENTRANT_SEED, round.key().as_ref(), owner.key().as_ref()], bump = entrant.bump, has_one = owner)]
     pub entrant: Box<Account<'info, Entrant>>,
-    #[account(mut, seeds = [POSITION_SEED, round.key().as_ref(), owner.key().as_ref()], bump = position.bump, has_one = owner)]
-    pub position: Box<Account<'info, Position>>,
+    #[account(mut, seeds = [POSITION_SEED, round.key().as_ref(), owner.key().as_ref()], bump = position.load()?.bump, constraint = position.load()?.owner == owner.key() @ BlackboxError::OwnerMismatch)]
+    pub position: AccountLoader<'info, Position>,
     /// The user's delegated USDC (their ATA address on the ER).
     #[account(mut, constraint = owner_ata.owner == owner.key() @ BlackboxError::OwnerMismatch, constraint = owner_ata.mint == round.mint @ BlackboxError::BadDeposit)]
     pub owner_ata: Box<Account<'info, TokenAccount>>,
@@ -36,7 +36,7 @@ pub fn fund_entrant(ctx: Context<FundEntrant>, margin: u64) -> Result<()> {
     let r = &mut ctx.accounts.round;
     require!(r.status == RoundStatus::Open, BlackboxError::BadRoundStatus);
     let e = &mut ctx.accounts.entrant;
-    let p = &mut ctx.accounts.position;
+    let mut p = ctx.accounts.position.load_mut()?;
     let total_after = e.deposited.checked_add(margin).ok_or(BlackboxError::MathOverflow)?;
     require!(total_after >= r.min_margin && total_after <= r.max_margin, BlackboxError::BadDeposit);
 

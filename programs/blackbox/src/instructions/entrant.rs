@@ -32,19 +32,19 @@ pub struct JoinRound<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + Strategy::INIT_SPACE,
+        space = Strategy::SIZE,
         seeds = [STRATEGY_SEED, round.key().as_ref(), owner.key().as_ref()],
         bump
     )]
-    pub strategy: Box<Account<'info, Strategy>>,
+    pub strategy: AccountLoader<'info, Strategy>,
     #[account(
         init,
         payer = owner,
-        space = 8 + Position::INIT_SPACE,
+        space = Position::SIZE,
         seeds = [POSITION_SEED, round.key().as_ref(), owner.key().as_ref()],
         bump
     )]
-    pub position: Box<Account<'info, Position>>,
+    pub position: AccountLoader<'info, Position>,
     #[account(address = round.mint)]
     pub mint: Box<Account<'info, Mint>>,
     /// Custody token account owned by the Entrant PDA (margin lives here on the ER).
@@ -101,36 +101,25 @@ pub fn join_round(ctx: Context<JoinRound>) -> Result<()> {
     e.fee_price_bps = r.license_fee_min_bps;
     e.license_count = 0;
     e.privatized = false;
+    e.settled = false;
+    e.hall_recorded = false;
     e.bump = ctx.bumps.entrant;
 
-    let s = &mut ctx.accounts.strategy;
-    s.round = r.key();
-    s.owner = ctx.accounts.owner.key();
-    s.version = 0;
-    s.len = 0;
-    s.step_limit = r.step_limit;
-    s.updated_tick = 0;
-    s.bytecode = [0u8; MAX_BYTECODE];
-    s.bump = ctx.bumps.strategy;
-
-    let p = &mut ctx.accounts.position;
-    p.round = r.key();
-    p.owner = ctx.accounts.owner.key();
-    p.margin = 0;
-    p.realized_pnl = 0;
-    p.legs = [Leg::default(); MAX_MARKETS];
-    p.mem = [0i64; MEM_SLOTS];
-    p.liquidated = false;
-    p.trade_count = 0;
-    p.last_fault = 0;
-    p.last_fault_pc = 0;
-    p.last_steps = 0;
-    p.sum_ret = 0;
-    p.sum_ret_sq = 0;
-    p.ret_n = 0;
-    p.last_equity = 0;
-    p.peak_equity = 0;
-    p.bump = ctx.bumps.position;
+    let round_key = r.key();
+    let step_limit = r.step_limit;
+    {
+        let mut s = ctx.accounts.strategy.load_init()?;
+        s.round = round_key;
+        s.owner = ctx.accounts.owner.key();
+        s.step_limit = step_limit;
+        s.bump = ctx.bumps.strategy;
+    }
+    {
+        let mut p = ctx.accounts.position.load_init()?;
+        p.round = round_key;
+        p.owner = ctx.accounts.owner.key();
+        p.bump = ctx.bumps.position;
+    }
 
     // Pre-fund permission rent: Strategy and Position each get a 1-member
     // permission; the Entrant sponsors nothing yet but gets a small reserve.
@@ -220,10 +209,10 @@ pub struct PrivatizeEntrant<'info> {
     pub round: Box<Account<'info, Round>>,
     #[account(mut, seeds = [ENTRANT_SEED, round.key().as_ref(), owner.key().as_ref()], bump = entrant.bump, has_one = owner)]
     pub entrant: Box<Account<'info, Entrant>>,
-    #[account(mut, seeds = [STRATEGY_SEED, round.key().as_ref(), owner.key().as_ref()], bump = strategy.bump, has_one = owner)]
-    pub strategy: Box<Account<'info, Strategy>>,
-    #[account(mut, seeds = [POSITION_SEED, round.key().as_ref(), owner.key().as_ref()], bump = position.bump, has_one = owner)]
-    pub position: Box<Account<'info, Position>>,
+    #[account(mut, seeds = [STRATEGY_SEED, round.key().as_ref(), owner.key().as_ref()], bump = strategy.load()?.bump, constraint = strategy.load()?.owner == owner.key() @ BlackboxError::OwnerMismatch)]
+    pub strategy: AccountLoader<'info, Strategy>,
+    #[account(mut, seeds = [POSITION_SEED, round.key().as_ref(), owner.key().as_ref()], bump = position.load()?.bump, constraint = position.load()?.owner == owner.key() @ BlackboxError::OwnerMismatch)]
+    pub position: AccountLoader<'info, Position>,
     /// CHECK: permission PDA for the strategy
     #[account(mut, seeds = [PERMISSION_SEED, strategy.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
     pub strategy_permission: UncheckedAccount<'info>,
@@ -248,7 +237,7 @@ pub fn privatize_entrant(ctx: Context<PrivatizeEntrant>) -> Result<()> {
     let owner = ctx.accounts.owner.key();
     let members = vec![privacy::read_member(owner)];
 
-    let sbump = [ctx.accounts.strategy.bump];
+    let sbump = [ctx.accounts.strategy.load()?.bump];
     let sseeds: &[&[u8]] = &[STRATEGY_SEED, round_key.as_ref(), owner.as_ref(), &sbump];
     let sinfo = ctx.accounts.strategy.to_account_info();
     privacy::create_permission(
@@ -265,7 +254,7 @@ pub fn privatize_entrant(ctx: Context<PrivatizeEntrant>) -> Result<()> {
         &[sseeds],
     )?;
 
-    let pbump = [ctx.accounts.position.bump];
+    let pbump = [ctx.accounts.position.load()?.bump];
     let pseeds: &[&[u8]] = &[POSITION_SEED, round_key.as_ref(), owner.as_ref(), &pbump];
     let pinfo = ctx.accounts.position.to_account_info();
     privacy::create_permission(
@@ -295,8 +284,8 @@ pub struct SetStrategy<'info> {
     pub round: Box<Account<'info, Round>>,
     #[account(mut, seeds = [ENTRANT_SEED, round.key().as_ref(), owner.key().as_ref()], bump = entrant.bump, has_one = owner)]
     pub entrant: Box<Account<'info, Entrant>>,
-    #[account(mut, seeds = [STRATEGY_SEED, round.key().as_ref(), owner.key().as_ref()], bump = strategy.bump, has_one = owner)]
-    pub strategy: Box<Account<'info, Strategy>>,
+    #[account(mut, seeds = [STRATEGY_SEED, round.key().as_ref(), owner.key().as_ref()], bump = strategy.load()?.bump, constraint = strategy.load()?.owner == owner.key() @ BlackboxError::OwnerMismatch)]
+    pub strategy: AccountLoader<'info, Strategy>,
 }
 
 /// Upload or hot-swap the strategy bytecode. Only accepted on a privatized
@@ -311,12 +300,13 @@ pub fn set_strategy(ctx: Context<SetStrategy>, bytecode: Vec<u8>) -> Result<()> 
         msg!("bytecode invalid: {:?}", e);
         error!(BlackboxError::BadBytecode)
     })?;
-    let s = &mut ctx.accounts.strategy;
+    let tick = r.tick;
+    let mut s = ctx.accounts.strategy.load_mut()?;
     s.bytecode = [0u8; MAX_BYTECODE];
     s.bytecode[..bytecode.len()].copy_from_slice(&bytecode);
     s.len = bytecode.len() as u16;
     s.version = s.version.saturating_add(1);
-    s.updated_tick = r.tick;
+    s.updated_tick = tick;
     ctx.accounts.entrant.strategy_version = s.version;
     Ok(())
 }

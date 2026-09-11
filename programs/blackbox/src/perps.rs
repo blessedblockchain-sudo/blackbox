@@ -235,9 +235,12 @@ pub fn trade_to_target(
         leg.funding_index = m.funding_index;
     }
 
-    // Leverage check on the resulting book: |target| + others <= equity * max_lev.
-    let max_notional = equity_now.max(0) as i128 * m.max_leverage as i128;
-    require!(target.abs() + other_notional <= max_notional, BlackboxError::LeverageExceeded);
+    // Leverage check only when exposure grows: |target| + others <= equity * max_lev.
+    // Reducing or closing must always be possible, even for an underwater book.
+    if target.abs() > cur.abs() {
+        let max_notional = equity_now.max(0) as i128 * m.max_leverage as i128;
+        require!(target.abs() + other_notional <= max_notional, BlackboxError::LeverageExceeded);
+    }
 
     // Split into reduce (towards zero / flip) and increase (away from zero).
     let same_sign = (cur > 0 && target > 0) || (cur < 0 && target < 0);
@@ -306,21 +309,6 @@ pub fn trade_to_target(
     Ok(out)
 }
 
-/// Close every leg at fill prices; returns realized delta (incl. funding) and OI deltas applied.
-pub fn close_all(markets: &mut [Option<&mut Market>; MAX_MARKETS], legs: &mut [Leg; MAX_MARKETS]) -> Result<i64> {
-    let mut realized: i128 = 0;
-    for i in 0..MAX_MARKETS {
-        if legs[i].side == 0 {
-            continue;
-        }
-        if let Some(m) = markets[i].as_deref_mut() {
-            let r = trade_to_target(m, &mut legs[i], 0, i64::MAX / 4, 0)?;
-            realized += r.realized_delta as i128;
-        }
-    }
-    to_i64(realized)
-}
-
 /// Funding rate update: index += rate(skew) per funding period.
 /// rate = skew * rate_scale where rate_scale is bps per period at full skew.
 pub fn accrue_funding(m: &mut Market, rate_bps_at_full_skew: i32) -> Result<()> {
@@ -336,33 +324,15 @@ mod tests {
     use super::*;
 
     fn market(mark: i64) -> Market {
-        Market {
-            round: Pubkey::default(),
-            index: 0,
-            feed: Pubkey::default(),
-            decimals: 8,
-            max_leverage: 10,
-            maintenance_bps: 500,
-            base_spread_bps: 5,
-            skew_spread_bps: 50,
-            oi_cap: 1_000_000 * SCALE as u64,
-            oi_long: 0,
-            oi_short: 0,
-            funding_index: 0,
-            funding_rate_bps: 0,
-            last_funding_tick: 0,
-            mark,
-            last_publish_time: 0,
-            last_tick: 0,
-            ring: [0; RING_LEN],
-            ring_pos: 0,
-            ring_len: 0,
-            ema8: 0,
-            ema21: 0,
-            ema55: 0,
-            vol: 0,
-            bump: 0,
-        }
+        let mut m: Market = bytemuck::Zeroable::zeroed();
+        m.decimals = 8;
+        m.max_leverage = 10;
+        m.maintenance_bps = 500;
+        m.base_spread_bps = 5;
+        m.skew_spread_bps = 50;
+        m.oi_cap = 1_000_000 * SCALE as u64;
+        m.mark = mark;
+        m
     }
 
     #[test]

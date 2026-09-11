@@ -91,4 +91,37 @@ pub mod blackbox {
     pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()> {
         instructions::tick::tick_entrant(ctx)
     }
+
+    // ---- ER: randomness
+    pub fn request_round_seed(ctx: Context<RequestRoundSeed>, client_seed: u8) -> Result<()> {
+        instructions::vrf::request_round_seed(ctx, client_seed)
+    }
+    pub fn round_seed_callback(ctx: Context<RoundSeedCallback>, randomness: [u8; 32], client_seed: u8) -> Result<()> {
+        instructions::vrf::round_seed_callback(ctx, randomness, client_seed)
+    }
+
+    // ---- ER: settlement
+    pub fn settle_entrant<'info>(ctx: Context<'info, SettleEntrant<'info>>) -> Result<()> {
+        instructions::settle::settle_entrant(ctx)
+    }
+    pub fn undelegate_entrant(ctx: Context<UndelegateEntrant>) -> Result<()> {
+        instructions::settle::undelegate_entrant(ctx)
+    }
+    pub fn rank_round(ctx: Context<RankRound>) -> Result<()> {
+        instructions::settle::rank_round(ctx)
+    }
+    pub fn pay_prizes<'info>(ctx: Context<'info, PayPrizes<'info>>) -> Result<()> {
+        instructions::settle::pay_prizes(ctx)
+    }
+    pub fn close_round<'info>(ctx: Context<'info, CloseRound<'info>>) -> Result<()> {
+        instructions::settle::close_round(ctx)
+    }
+
+    // ---- L1: hall of fame
+    pub fn init_hall(ctx: Context<InitHall>) -> Result<()> {
+        instructions::settle::init_hall(ctx)
+    }
+    pub fn record_hall(ctx: Context<RecordHall>) -> Result<()> {
+        instructions::settle::record_hall(ctx)
+    }
 }

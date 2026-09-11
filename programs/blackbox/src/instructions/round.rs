@@ -52,8 +52,8 @@ pub struct ScoreboardPrivacy<'info> {
     pub admin: Signer<'info>,
     #[account(mut, seeds = [ROUND_SEED, &round.id.to_le_bytes()], bump = round.bump, has_one = admin)]
     pub round: Account<'info, Round>,
-    #[account(mut, seeds = [SCOREBOARD_SEED, round.key().as_ref()], bump = scoreboard.bump)]
-    pub scoreboard: Account<'info, Scoreboard>,
+    #[account(mut, seeds = [SCOREBOARD_SEED, round.key().as_ref()], bump = scoreboard.load()?.bump)]
+    pub scoreboard: AccountLoader<'info, Scoreboard>,
     /// CHECK: permission PDA of the scoreboard
     #[account(mut, seeds = [PERMISSION_SEED, scoreboard.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
     pub permission: UncheckedAccount<'info>,
@@ -71,7 +71,7 @@ pub struct ScoreboardPrivacy<'info> {
 /// Dark mode: make the scoreboard program-only (no members). Lit mode: public.
 pub fn set_scoreboard_privacy(ctx: Context<ScoreboardPrivacy>, private: bool) -> Result<()> {
     let round_key = ctx.accounts.round.key();
-    let bump = [ctx.accounts.scoreboard.bump];
+    let bump = [ctx.accounts.scoreboard.load()?.bump];
     let seeds: &[&[u8]] = &[SCOREBOARD_SEED, round_key.as_ref(), &bump];
     let sb = ctx.accounts.scoreboard.to_account_info();
     let accs = PermissionAccounts {

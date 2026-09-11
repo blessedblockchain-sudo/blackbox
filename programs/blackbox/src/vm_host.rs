@@ -1,5 +1,6 @@
 //! The VM's view of the world during one tick: market indicators, the
-//! entrant's position, and the round's randomness.
+//! entrant's legs, and the round's randomness. Holds references only; the
+//! zero-copy accounts are never copied.
 
 use anchor_lang::prelude::*;
 use solana_sha256_hasher::hashv;
@@ -9,8 +10,7 @@ use crate::perps;
 use crate::state::{Leg, Market};
 
 pub struct TickHost<'a> {
-    pub markets: &'a [Option<Market>; MAX_MARKETS],
-    pub n_markets: u8,
+    pub markets: &'a [&'a Market],
     pub legs: &'a [Leg; MAX_MARKETS],
     pub equity: i64,
     pub free_margin: i64,
@@ -27,16 +27,13 @@ impl<'a> TickHost<'a> {
     }
 
     fn m(&self, i: u8) -> Option<&Market> {
-        if i >= self.n_markets {
-            return None;
-        }
-        self.markets[i as usize].as_ref()
+        self.markets.get(i as usize).copied()
     }
 }
 
 impl<'a> bxvm::Host for TickHost<'a> {
     fn n_markets(&self) -> u8 {
-        self.n_markets
+        self.markets.len() as u8
     }
     fn price(&self, market: u8) -> Option<i64> {
         self.m(market).map(|m| m.mark).filter(|p| *p > 0)

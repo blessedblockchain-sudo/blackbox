@@ -4076,12 +4076,9 @@ export type Blackbox = {
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "funder",
           "writable": true,
-          "signer": true,
-          "relations": [
-            "round"
-          ]
+          "signer": true
         },
         {
           "name": "round",
@@ -4107,9 +4104,9 @@ export type Blackbox = {
           }
         },
         {
-          "name": "adminAta",
+          "name": "funderAta",
           "docs": [
-            "The admin's USDC on the ER (their ATA address)."
+            "The funder's USDC on the ER (their ATA address)."
           ],
           "writable": true
         },
@@ -4985,9 +4982,9 @@ export type Blackbox = {
           }
         },
         {
-          "name": "adminAta",
+          "name": "toAta",
           "docs": [
-            "The admin's USDC on the ER (their ATA address)."
+            "Destination chosen by the admin (on the ER), e.g. the house wallet's ATA."
           ],
           "writable": true
         },

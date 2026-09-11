@@ -54,6 +54,7 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
   const users = Array.from({ length: N }, () => Keypair.generate());
   const stranger = Keypair.generate();
   const backer = Keypair.generate();
+  const house = Keypair.generate();
   let taskBase = 0;
   const names =["momentum", "meanReversion", "breakout", "randomWalk", "alwaysLong", "degen"];
   const codes = users.map((_, i) => strategies.BUILTIN_STRATEGIES[names[i % names.length]](0));
@@ -67,6 +68,9 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
 
   before(async () => {
     console.log(`cluster=${CLUSTER} admin=${admin.publicKey.toBase58()} entrants=${N} tick=${TICK_MS}ms duration=${DURATION} ticks`);
+    // Keep the generated wallets so their leftover SOL can be reclaimed (scripts/reclaim-sol.ts).
+    fs.mkdirSync(path.join(__dirname, "../.mb"), { recursive: true });
+    fs.writeFileSync(path.join(__dirname, `../.mb/e2e-keys-${CLUSTER}-${Date.now()}.json`), JSON.stringify([...users, stranger, backer, house].map((k) => Array.from(k.secretKey))));
     if (CLUSTER === "local") {
       const bal = await bx.base.getBalance(admin.publicKey);
       if (bal < 50 * LAMPORTS_PER_SOL) await bx.base.confirmTransaction(await bx.base.requestAirdrop(admin.publicKey, 100 * LAMPORTS_PER_SOL), "confirmed");
@@ -192,15 +196,14 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     rec("entrant 0 margin funded", pos?.margin.toString() === (100n * USDC).toString(), `margin ${pos?.margin}`);
     const r = await bx.fetchRound(round);
     rec("pot collected", r?.pot.toString() === (5n * USDC * BigInt(N)).toString(), `pot ${r?.pot}`);
-    // House bankroll into the vault; it counts toward the public solvency beacon.
-    if (!(await bx.hasErDeposit(admin.publicKey, mint)) || (await bx.erTokenBalance(admin, mint)) < 500n * USDC) {
-      const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, admin.publicKey);
-      await mintTo(bx.base, admin, mint, a.address, admin, 500n * USDC);
-      await bx.depositToEr(admin, mint, 500n * USDC);
-      await bx.waitErBalance(admin, mint, 500n * USDC);
-    }
+    // House bankroll from a fresh wallet into the vault; it counts toward the public solvency beacon.
+    await bx.sendBase([SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: house.publicKey, lamports: 0.05 * LAMPORTS_PER_SOL })], [admin], "fund house");
+    const ha = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, house.publicKey);
+    await mintTo(bx.base, admin, mint, ha.address, admin, 500n * USDC);
+    await bx.depositToEr(house, mint, 500n * USDC);
+    await bx.waitErBalance(house, mint, 500n * USDC);
     const vb0 = BigInt((await bx.fetchRound(round))!.vaultBalance.toString());
-    await bx.seedVault(round, mint, 500n * USDC);
+    await bx.seedVault(round, mint, 500n * USDC, house);
     const vb1 = BigInt((await bx.fetchRound(round))!.vaultBalance.toString());
     rec("house bankroll seeded into the vault", vb1 - vb0 === 500n * USDC, `vault_balance ${Number(vb1) / 1e6} USDC`);
   });
@@ -394,10 +397,10 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
     await bx.payPrizes(round, mint, winners);
     const after = await Promise.all(winners.map((w: PublicKey) => bx.erTokenBalance(users.find((u) => u.publicKey.equals(w))!, mint)));
     rec("prizes paid to top 3", after.every((a, i) => a > before[i]), after.map((a, i) => `+${Number(a - before[i]) / 1e6}`).join(" "));
-    const adminBefore = await bx.erTokenBalance(admin, mint);
-    await bx.sweepVault(round, mint);
-    const adminAfter = await bx.erTokenBalance(admin, mint);
-    rec("vault swept to the admin after prizes and licenses", adminAfter > adminBefore, `+${Number(adminAfter - adminBefore) / 1e6} USDC (bankroll, net losses, protocol fee)`);
+    const houseBefore = await bx.erTokenBalance(house, mint);
+    await bx.sweepVault(round, mint, house.publicKey);
+    const houseAfter = await bx.erTokenBalance(house, mint);
+    rec("vault swept to the house after prizes and licenses", houseAfter > houseBefore, `+${Number(houseAfter - houseBefore) / 1e6} USDC (bankroll, net losses, protocol fee)`);
     await bx.closeChat(round);
     const chatAfter = await bx.teePublic().getAccountInfo(pda.chatPda(round), "processed");
     rec("chat closed before commit (rent back to the round)", !chatAfter || chatAfter.data.length === 0);

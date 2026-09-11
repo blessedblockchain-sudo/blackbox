@@ -352,10 +352,22 @@ export class BlackboxClient {
     return this.sendBase([ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ix], [user], "delegate_entrant");
   }
 
-  /** User moves `amount` USDC into the ER (their ATA address becomes spendable there). */
+  /**
+   * User moves `amount` USDC into the ER (their ATA address becomes spendable there).
+   * The first deposit delegates the user's ephemeral ATA. A later deposit goes
+   * through the eSPL shuttle (the SDK's idempotent path), which the local stack's
+   * eSPL program rejects; prefer one deposit per wallet per round.
+   */
   async depositToEr(user: Keypair, mint: PublicKey, amount: bigint, payer: Keypair = user, initVault = false): Promise<string> {
-    const ixs = await delegateSpl(user.publicKey, mint, amount, { validator: this.validator, idempotent: false, payer: payer.publicKey, initVaultIfMissing: initVault } as any);
-    return this.sendBase(ixs, payer.publicKey.equals(user.publicKey) ? [user] : [payer, user], "delegate_spl");
+    const topUp = await this.hasErDeposit(user.publicKey, mint);
+    const ixs = await delegateSpl(user.publicKey, mint, amount, { validator: this.validator, idempotent: topUp, payer: payer.publicKey, initVaultIfMissing: initVault } as any);
+    const signers = payer.publicKey.equals(user.publicKey) ? [user] : [payer, user];
+    if (!topUp) return this.sendBase(ixs, signers, "delegate_spl");
+    try {
+      return await this.sendBase(ixs, signers, "delegate_spl (top-up)");
+    } catch (e) {
+      throw new Error(`A top-up deposit into the ER failed for ${user.publicKey.toBase58()} (it already has an ER deposit). Deposit everything in the first deposit, or use a fresh wallet. ${String((e as Error)?.message ?? e).slice(0, 300)}`);
+    }
   }
 
   async erTokenBalance(user: Keypair, mint: PublicKey): Promise<bigint> {
@@ -694,20 +706,20 @@ export class BlackboxClient {
     return !!info && info.owner.equals(DELEGATION_PROGRAM_ID);
   }
 
-  /** ER: the admin adds a house bankroll to the round vault (counted in the solvency beacon). */
-  async seedVault(round: PublicKey, mint: PublicKey, amount: bigint): Promise<string> {
+  /** ER: `funder` (the house) adds a bankroll to the round vault (counted in the solvency beacon). */
+  async seedVault(round: PublicKey, mint: PublicKey, amount: bigint, funder: Keypair = this.admin): Promise<string> {
     const ix = await this.program.methods
       .seedVault(bn(amount))
-      .accountsPartial({ admin: this.admin.publicKey, round, adminAta: P.ata(mint, this.admin.publicKey), vaultAta: P.ata(mint, round), tokenProgram: TOKEN_PROGRAM_ID })
+      .accountsPartial({ funder: funder.publicKey, round, funderAta: P.ata(mint, funder.publicKey), vaultAta: P.ata(mint, round), tokenProgram: TOKEN_PROGRAM_ID })
       .instruction();
-    return this.sendEr([ix], [this.admin], "seed_vault");
+    return this.sendEr([ix], [funder], "seed_vault");
   }
 
-  /** ER, after prizes and every license have settled: the admin takes what is left in the vault. */
-  async sweepVault(round: PublicKey, mint: PublicKey): Promise<string> {
+  /** ER, after prizes and every license have settled: the admin sends what is left in the vault to `to`'s ATA. */
+  async sweepVault(round: PublicKey, mint: PublicKey, to: PublicKey = this.admin.publicKey): Promise<string> {
     const ix = await this.program.methods
       .sweepVault()
-      .accountsPartial({ admin: this.admin.publicKey, round, adminAta: P.ata(mint, this.admin.publicKey), vaultAta: P.ata(mint, round), tokenProgram: TOKEN_PROGRAM_ID })
+      .accountsPartial({ admin: this.admin.publicKey, round, toAta: P.ata(mint, to), vaultAta: P.ata(mint, round), tokenProgram: TOKEN_PROGRAM_ID })
       .instruction();
     return this.sendEr([ix], [this.admin], "sweep_vault");
   }

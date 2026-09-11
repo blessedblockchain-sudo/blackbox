@@ -124,10 +124,10 @@ pub mod blackbox {
     }
 
     // ---- ER: house bankroll
-    pub fn seed_vault(ctx: Context<VaultAdmin>, amount: u64) -> Result<()> {
+    pub fn seed_vault(ctx: Context<SeedVault>, amount: u64) -> Result<()> {
         instructions::vault::seed_vault(ctx, amount)
     }
-    pub fn sweep_vault(ctx: Context<VaultAdmin>) -> Result<()> {
+    pub fn sweep_vault(ctx: Context<SweepVault>) -> Result<()> {
         instructions::vault::sweep_vault(ctx)
     }
 

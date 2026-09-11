@@ -231,18 +231,22 @@ async function main() {
     await bx.setStrategy(round, b.kp, b.code());
     await bx.fund(round, mint, b.kp, 200n * USDC);
   }
-  // House bankroll: profits are paid in full whatever order entrants settle in.
+  // House bankroll, from a fresh wallet each round (a wallet's first ER deposit
+  // is the reliable path): profits are paid in full whatever order entrants
+  // settle in. What is left after the round is swept back to the house.
   const bankroll = BigInt(process.env.BANKROLL_USDC ?? 2000) * USDC;
+  let house: Keypair | null = null;
   if (bankroll > 0n) {
     try {
-      const have = (await bx.hasErDeposit(admin.publicKey, mint)) ? await bx.erTokenBalance(admin, mint) : -1n;
-      if (have < bankroll) {
-        const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, admin.publicKey);
-        await mintTo(bx.base, admin, mint, a.address, admin, bankroll);
-        await bx.depositToEr(admin, mint, bankroll);
-        await bx.waitErBalance(admin, mint, bankroll);
-      }
-      await bx.seedVault(round, mint, bankroll);
+      const kp = Keypair.generate();
+      await bx.sendBase([SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: kp.publicKey, lamports: 0.05 * LAMPORTS_PER_SOL })], [admin], "fund house");
+      const a = await getOrCreateAssociatedTokenAccount(bx.base, admin, mint, kp.publicKey);
+      await mintTo(bx.base, admin, mint, a.address, admin, bankroll);
+      await bx.depositToEr(kp, mint, bankroll);
+      await bx.waitErBalance(kp, mint, bankroll);
+      await bx.seedVault(round, mint, bankroll, kp);
+      house = kp;
+      update((cur) => ({ ...cur, house: { owner: kp.publicKey.toBase58(), secretKey: Array.from(kp.secretKey), bankrollUsdc: Number(bankroll) / 1e6 } }));
     } catch (e) {
       console.log("bankroll seeding failed:", String(e).slice(0, 200));
     }
@@ -337,7 +341,7 @@ async function main() {
   const sb: any = await bx.fetchScoreboard(round);
   const ranked = sb.entries.slice(0, sb.n).filter((e: any) => e.rank > 0).sort((a: any, b: any) => a.rank - b.rank);
   await bx.payPrizes(round, mint, ranked.slice(0, 3).map((e: any) => e.owner));
-  await bx.sweepVault(round, mint).catch((e) => console.log("sweep_vault failed:", String(e).slice(0, 160)));
+  if (house) await bx.sweepVault(round, mint, house.publicKey).catch((e) => console.log("sweep_vault failed:", String(e).slice(0, 160)));
   await bx.closeChat(round).catch((e) => console.log("close_chat failed:", String(e).slice(0, 160)));
   await bx.closeRound(round, 3);
   await bx.waitRoundOnL1(round);

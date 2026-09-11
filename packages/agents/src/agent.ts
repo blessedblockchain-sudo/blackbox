@@ -70,6 +70,9 @@ export class Mutex {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** USDC deposited with the entry and kept on the ER for back_strategy (BLACKBOX_LICENSE_BUDGET_USDC). */
+const LICENSE_BUDGET_USDC = Number(process.env.BLACKBOX_LICENSE_BUDGET_USDC ?? 100);
+
 export class Agent {
   readonly memory: AgentMemory = { currentSource: null, strategyLabel: null, strategyVersion: null, swaps: 0, loops: 0, decisions: [], startingEquity: null };
   private server: AgentServer | null = null;
@@ -302,7 +305,9 @@ export class Agent {
         this.log(`entry window closed (phase ${rf.phase})`);
         return;
       }
-      const res = await this.toolbox("live").runnerCall("enter_round", { source: s.source, margin_usdc: s.marginUsdc });
+      // Deposit a licensing budget with the entry: back_strategy spends ER balance,
+      // and a wallet's first ER deposit is the reliable one.
+      const res = await this.toolbox("live").runnerCall("enter_round", { source: s.source, margin_usdc: s.marginUsdc, license_budget_usdc: LICENSE_BUDGET_USDC });
       if (!res.isError) {
         this.steps++;
         this.entered = true;

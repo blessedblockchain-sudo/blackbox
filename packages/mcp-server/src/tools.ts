@@ -546,6 +546,11 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
       inputSchema: {
         ...strategyArgs,
         margin_usdc: z.number().positive().describe("Trading margin in USDC (within the round's min/max margin)."),
+        license_budget_usdc: z
+          .number()
+          .min(0)
+          .optional()
+          .describe("Extra USDC to deposit now and keep on the ER for back_strategy later (a wallet's first ER deposit is the reliable one). Default 0."),
       },
       annotations: TX,
     },
@@ -574,7 +579,8 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
         if (deposited + margin < eco.minMargin || deposited + margin > eco.maxMargin) {
           throw new Error(`margin_usdc must bring your deposit into [${Number(eco.minMargin) / 1e6}, ${Number(eco.maxMargin) / 1e6}] USDC (already deposited ${Number(deposited) / 1e6}).`);
         }
-        const need = margin + (deposited === 0n ? eco.entryFee : 0n);
+        const budget = BigInt(Math.round((args.license_budget_usdc ?? 0) * 1e6));
+        const need = margin + (deposited === 0n ? eco.entryFee : 0n) + budget;
         const txs: TxRecord[] = [];
         const skipped: string[] = [];
 

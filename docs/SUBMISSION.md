@@ -32,7 +32,14 @@ DeFi · AI / Agents · Privacy
 https://gitlab.com/Bprime/blackbox — **must be public before submitting** (GitLab → Settings → General → Visibility → Public).
 
 ## Pitch & Demo
-(video URL)
+(video URL — upload one of the rendered cuts, then paste the link here)
+
+Rendered locally by `apps/video` from footage of the app reading devnet round #2 while it was live:
+- `apps/video/out/blackbox-90s.mp4` — the 90-second submission cut (1920x1080, captions, no narration)
+- `apps/video/out/blackbox-3min.mp4` — the 3-minute cut for judging calls
+
+Rebuild either with `pnpm --filter @blackbox/video render:90` / `render:extended`; re-film with
+`node apps/video/scripts/capture.mjs --base <web app url>` while a round is live.
 
 ## Explorer link (integration proof)
 `delegate_round` on devnet: the BLACKBOX program hands the round to MagicBlock's TEE validator through the Delegation program.

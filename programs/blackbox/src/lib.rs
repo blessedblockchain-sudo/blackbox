@@ -16,8 +16,10 @@ pub mod errors;
 pub mod espl;
 pub mod instructions;
 pub mod oracle;
+pub mod perps;
 pub mod privacy;
 pub mod state;
+pub mod vm_host;
 
 use instructions::*;
 use state::*;
@@ -69,5 +71,24 @@ pub mod blackbox {
     }
     pub fn start_round(ctx: Context<StartRound>) -> Result<()> {
         instructions::round::start_round(ctx)
+    }
+
+    // ---- ER: money
+    pub fn fund_entrant(ctx: Context<FundEntrant>, margin: u64) -> Result<()> {
+        instructions::fund::fund_entrant(ctx, margin)
+    }
+
+    // ---- ER: crank loop
+    pub fn schedule_clock(ctx: Context<ScheduleClock>, task_id: i64) -> Result<()> {
+        instructions::tick::schedule_clock(ctx, task_id)
+    }
+    pub fn schedule_entrant_tick<'info>(ctx: Context<'info, ScheduleEntrantTick<'info>>, task_id: i64) -> Result<()> {
+        instructions::tick::schedule_entrant_tick(ctx, task_id)
+    }
+    pub fn tick_clock(ctx: Context<TickClock>) -> Result<()> {
+        instructions::tick::tick_clock(ctx)
+    }
+    pub fn tick_entrant<'info>(ctx: Context<'info, TickEntrant<'info>>) -> Result<()> {
+        instructions::tick::tick_entrant(ctx)
     }
 }

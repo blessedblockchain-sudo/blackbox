@@ -237,6 +237,7 @@ pub struct License {
 pub struct ScoreEntry {
     pub owner: Pubkey,
     pub equity: i64,
+    pub deposited: u64,
     pub alive: bool,
     pub trades: u32,
     pub rank: u8,

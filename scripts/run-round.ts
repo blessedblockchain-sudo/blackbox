@@ -142,6 +142,85 @@ async function realPrices(): Promise<bigint[]> {
   return out;
 }
 
+/**
+ * Everything after the round is live: wait out the clock, then settle licences
+ * and entrants, rank, pay, sweep, close and record. Split out so a crashed
+ * runner can re-attach to a round that is still ticking (RESUME=1).
+ */
+async function finishRound(
+  bx: BlackboxClient,
+  round: PublicKey,
+  mint: PublicKey,
+  feeds: PublicKey[],
+  entrantKeys: PublicKey[],
+  house: Keypair | null,
+  base: number,
+  status: (phase: string, extra?: any) => void,
+  copycat: Promise<unknown> | null,
+  pusher: NodeJS.Timeout | null,
+) {
+  // 8) wait for the clock to finish; crank licenses that others opened without a task (`scheduled: false`)
+  const seen = new Set<string>();
+  for (;;) {
+    const r: any = await bx.fetchRound(round).catch((e: unknown) => {
+      console.log("   round read failed, retrying:", String(e).slice(0, 120));
+      return null;
+    });
+    if (r && "settling" in r.status) break;
+    if (r && "settled" in r.status) {
+      console.log("round already settled");
+      status("settled");
+      return;
+    }
+    const pending = (JSON.parse(fs.readFileSync(STATE, "utf8")).licenses ?? []).filter((l: any) => l.scheduled === false && !seen.has(`${l.buyer}:${l.author}`));
+    for (const l of pending) {
+      seen.add(`${l.buyer}:${l.author}`);
+      try {
+        await bx.scheduleLicenseTick(round, new PublicKey(l.buyer), new PublicKey(l.author), feeds, base + 1000 + seen.size);
+        update((cur) => ({ ...cur, licenses: (cur.licenses ?? []).map((x: any) => (x.buyer === l.buyer && x.author === l.author ? { ...x, scheduled: true } : x)) }));
+        console.log(`   scheduled license ${l.buyer.slice(0, 6)} -> ${l.author.slice(0, 6)}`);
+      } catch (e) {
+        console.log(`   license schedule failed: ${String(e).slice(0, 160)}`);
+      }
+    }
+    await sleep(2000);
+  }
+  if (copycat) await copycat.catch(() => {});
+
+  // 9) settle: licenses first (fees to authors, the rest to backers), then entrants
+  status("settling");
+  const licenses: { name?: string; buyer: string; author: string }[] = JSON.parse(fs.readFileSync(STATE, "utf8")).licenses ?? [];
+  for (const l of licenses) {
+    const buyer = new PublicKey(l.buyer);
+    const author = new PublicKey(l.author);
+    try {
+      await bx.settleLicense(round, mint, buyer, author, 3);
+      await bx.undelegateLicense(round, buyer, author);
+      console.log(`   license ${l.name ?? l.buyer.slice(0, 6)} -> ${l.author.slice(0, 6)} settled`);
+    } catch (e) {
+      console.log(`   license ${l.buyer.slice(0, 6)} settle failed: ${String(e).slice(0, 200)}`);
+    }
+  }
+  // Losers first (lit rounds), so profits come out of their losses before the bankroll.
+  const sbEnd: any = await bx.fetchScoreboard(round).catch(() => null);
+  const pnl = new Map<string, number>();
+  for (const e of sbEnd ? sbEnd.entries.slice(0, sbEnd.n) : []) pnl.set((e.owner as PublicKey).toBase58(), Number(e.equity) - Number(e.deposited));
+  const settleOrder = [...entrantKeys].sort((a, b) => (pnl.get(a.toBase58()) ?? 0) - (pnl.get(b.toBase58()) ?? 0));
+  for (const owner of settleOrder) await bx.settle(round, mint, owner, 3);
+  for (const owner of entrantKeys) await bx.undelegateEntrant(round, owner);
+  await bx.rank(round);
+  const sb: any = await bx.fetchScoreboard(round);
+  const ranked = sb.entries.slice(0, sb.n).filter((e: any) => e.rank > 0).sort((a: any, b: any) => a.rank - b.rank);
+  await bx.payPrizes(round, mint, ranked.slice(0, 3).map((e: any) => e.owner));
+  if (house) await bx.sweepVault(round, mint, house.publicKey).catch((e) => console.log("sweep_vault failed:", String(e).slice(0, 160)));
+  await bx.closeChat(round).catch((e) => console.log("close_chat failed:", String(e).slice(0, 160)));
+  await bx.closeRound(round, 3);
+  await bx.waitRoundOnL1(round);
+  for (const owner of entrantKeys) await bx.recordHall(round, owner).catch(() => {});
+  status("settled", { settledAt: Date.now() });
+  if (pusher) clearInterval(pusher);
+}
+
 async function main() {
   const admin = anchor.Wallet.local().payer;
   const bx = new BlackboxClient(admin, CLUSTER);
@@ -150,6 +229,18 @@ async function main() {
     update((prev) => ({ ...prev, ...extra, phase, updatedAt: Date.now() }));
     console.log(`== ${phase}`);
   };
+
+  if (process.env.RESUME) {
+    const st = JSON.parse(fs.readFileSync(STATE, "utf8"));
+    const round = new PublicKey(st.round);
+    const mint = new PublicKey(st.mint);
+    const feeds = (st.feeds as string[]).map((f) => new PublicKey(f));
+    const owners: string[] = st.entrantOwners ?? [...(st.entrants ?? []), ...(st.external ?? [])].map((e: any) => e.owner);
+    const house = st.house?.secretKey ? Keypair.fromSecretKey(Uint8Array.from(st.house.secretKey)) : null;
+    console.log(`resuming round #${st.roundId} ${st.round} with ${owners.length} entrants`);
+    await finishRound(bx, round, mint, feeds, owners.map((o) => new PublicKey(o)), house, Math.floor(Math.random() * 1_000_000_000), status, null, null);
+    process.exit(0);
+  }
 
   // 1) protocol + mint
   let mint: PublicKey;
@@ -310,58 +401,7 @@ async function main() {
     }
   })();
 
-  // 8) wait for the clock to finish; crank licenses that others opened without a task (`scheduled: false`)
-  const seen = new Set<string>();
-  for (;;) {
-    const r: any = await bx.fetchRound(round);
-    if (r && "settling" in r.status) break;
-    const pending = (JSON.parse(fs.readFileSync(STATE, "utf8")).licenses ?? []).filter((l: any) => l.scheduled === false && !seen.has(`${l.buyer}:${l.author}`));
-    for (const l of pending) {
-      seen.add(`${l.buyer}:${l.author}`);
-      try {
-        await bx.scheduleLicenseTick(round, new PublicKey(l.buyer), new PublicKey(l.author), feeds, base + 1000 + seen.size);
-        update((cur) => ({ ...cur, licenses: (cur.licenses ?? []).map((x: any) => (x.buyer === l.buyer && x.author === l.author ? { ...x, scheduled: true } : x)) }));
-        console.log(`   scheduled license ${l.buyer.slice(0, 6)} -> ${l.author.slice(0, 6)}`);
-      } catch (e) {
-        console.log(`   license schedule failed: ${String(e).slice(0, 160)}`);
-      }
-    }
-    await sleep(2000);
-  }
-  await copycat.catch(() => {});
-
-  // 9) settle: licenses first (fees to authors, the rest to backers), then entrants
-  status("settling");
-  const licenses: { name?: string; buyer: string; author: string }[] = JSON.parse(fs.readFileSync(STATE, "utf8")).licenses ?? [];
-  for (const l of licenses) {
-    const buyer = new PublicKey(l.buyer);
-    const author = new PublicKey(l.author);
-    try {
-      await bx.settleLicense(round, mint, buyer, author, 3);
-      await bx.undelegateLicense(round, buyer, author);
-      console.log(`   license ${l.name ?? l.buyer.slice(0, 6)} -> ${l.author.slice(0, 6)} settled`);
-    } catch (e) {
-      console.log(`   license ${l.buyer.slice(0, 6)} settle failed: ${String(e).slice(0, 200)}`);
-    }
-  }
-  // Losers first (lit rounds), so profits come out of their losses before the bankroll.
-  const sbEnd: any = await bx.fetchScoreboard(round).catch(() => null);
-  const pnl = new Map<string, number>();
-  for (const e of sbEnd ? sbEnd.entries.slice(0, sbEnd.n) : []) pnl.set((e.owner as PublicKey).toBase58(), Number(e.equity) - Number(e.deposited));
-  const settleOrder = [...entrantKeys].sort((a, b) => (pnl.get(a.toBase58()) ?? 0) - (pnl.get(b.toBase58()) ?? 0));
-  for (const owner of settleOrder) await bx.settle(round, mint, owner, 3);
-  for (const owner of entrantKeys) await bx.undelegateEntrant(round, owner);
-  await bx.rank(round);
-  const sb: any = await bx.fetchScoreboard(round);
-  const ranked = sb.entries.slice(0, sb.n).filter((e: any) => e.rank > 0).sort((a: any, b: any) => a.rank - b.rank);
-  await bx.payPrizes(round, mint, ranked.slice(0, 3).map((e: any) => e.owner));
-  if (house) await bx.sweepVault(round, mint, house.publicKey).catch((e) => console.log("sweep_vault failed:", String(e).slice(0, 160)));
-  await bx.closeChat(round).catch((e) => console.log("close_chat failed:", String(e).slice(0, 160)));
-  await bx.closeRound(round, 3);
-  await bx.waitRoundOnL1(round);
-  for (const owner of entrantKeys) await bx.recordHall(round, owner).catch(() => {});
-  status("settled", { settledAt: Date.now() });
-  if (pusher) clearInterval(pusher);
+  await finishRound(bx, round, mint, feeds, entrantKeys, house, base, status, copycat, pusher);
   process.exit(0);
 }
 

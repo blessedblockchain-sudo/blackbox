@@ -1,7 +1,8 @@
 # GitLab Pages: builds apps/web as a static export and publishes it.
 #
-# URL: https://bprime.gitlab.io/blackbox/  (Pages must be enabled; a private
-# project serves it to members only until the project is public).
+# URL: https://blackbox-e57ff9.gitlab.io/  (GitLab's unique domain; the path
+# form https://bprime.gitlab.io/blackbox/ redirects to it). The basePath below
+# is read from CI_PAGES_URL, so either shape builds correctly.
 #
 # The exported site has no server. Everything the app shows it reads from the
 # browser: Solana devnet for L1 and the Hall of Fame, MagicBlock's TEE RPC for

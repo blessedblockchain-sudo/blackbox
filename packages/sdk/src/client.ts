@@ -105,8 +105,18 @@ export function decodeChat(data: Buffer): ChatMessage[] {
 async function retryingFetch(input: any, init?: any): Promise<any> {
   let delay = 400;
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(input, init);
-    if ((res.status !== 429 && res.status < 500) || attempt >= 5) return res;
+    // A dropped socket throws instead of returning a status. Devnet does both,
+    // and either one kills a long round if we let it escape.
+    let res: any;
+    try {
+      res = await fetch(input, init);
+    } catch (err) {
+      if (attempt >= 7) throw err;
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 2, 4000);
+      continue;
+    }
+    if ((res.status !== 429 && res.status < 500) || attempt >= 7) return res;
     await new Promise((r) => setTimeout(r, delay));
     delay = Math.min(delay * 2, 4000);
   }

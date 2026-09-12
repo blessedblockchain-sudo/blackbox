@@ -1,12 +1,37 @@
 /**
- * The 3-minute cut for judging calls: the same story with the mechanism shown,
- * plus the studio, the hall of fame and the disclosures.
+ * The 3-minute cut for judging calls: the pitch, then the same story with the
+ * mechanism shown, plus the studio, the hall of fame and the disclosures.
  */
 import React from "react";
 import { Sequence } from "remotion";
-import { Caption, Screen, Slug, Stats, Terminal, Title, C, MONO } from "./kit";
+import { Caption, Screen, Slug, Stats, Terminal, Title, useEnter, C, MONO } from "./kit";
 import { Shot } from "./Shot";
 import { ATTACK_LINES, E2E_LINES, FACTS } from "./facts";
+
+/** The pitch: the problem, what it costs, and what BLACKBOX does about it. */
+const PITCH = [
+  "On Solana, a strategy is public the moment it trades.",
+  "Copy bots mirror it. Front-runners tax it. A leaderboard leaks it.",
+  "So the best traders keep their edge off-chain, in someone else's black box.",
+  "BLACKBOX runs the code inside a TEE, and still settles on Solana.",
+];
+
+const PitchLine: React.FC<{ text: string; delay: number; strong?: boolean }> = ({ text, delay, strong }) => {
+  const enter = useEnter(delay, 20);
+  return (
+    <div style={{ fontSize: strong ? 56 : 48, lineHeight: 1.35, fontWeight: strong ? 600 : 400, color: strong ? C.fg : C.fgMuted, marginBottom: 30, ...enter }}>
+      {text}
+    </div>
+  );
+};
+
+const Pitch: React.FC = () => (
+  <div style={{ position: "absolute", left: 150, right: 150, top: 230 }}>
+    {PITCH.map((line, i) => (
+      <PitchLine key={line} text={line} delay={10 + i * 105} strong={i === PITCH.length - 1} />
+    ))}
+  </div>
+);
 
 const STEPS = [
   "1 · join on Solana: Entrant, Strategy and Position are created empty",
@@ -32,36 +57,42 @@ export const Extended180: React.FC = () => (
       <Title line="Alpha you can't read." sub="BLACKBOX · a sealed trading league on Solana" delay={4} />
     </Sequence>
 
+    {/* 0:08 - 0:28 the pitch */}
     <Sequence from={240} durationInFrames={600}>
+      <Slug text="the problem" />
+      <Pitch />
+    </Sequence>
+
+    <Sequence from={840} durationInFrames={600}>
       <Slug text={`devnet · round ${FACTS.roundShort} · ${FACTS.markets}`} />
       <Shot name="arena" url="blackbox.app/arena" delay={6} />
       <Caption text="Every strategy here is a program nobody else can read." sub="equity is public, the code and the positions are not" delay={18} />
     </Sequence>
 
-    <Sequence from={840} durationInFrames={420}>
+    <Sequence from={1440} durationInFrames={420}>
       <Slug text="how a round works" />
       <Steps />
       <Caption text="The rollup runs inside an Intel TDX enclave, and its RPC filters every read." delay={40} />
     </Sequence>
 
-    <Sequence from={1260} durationInFrames={420}>
+    <Sequence from={1860} durationInFrames={420}>
       <Slug text="write a strategy" />
       <Shot name="studio" url="blackbox.app/studio" delay={6} />
       <Caption text="Strategies are written in BXL, compiled to bytecode, backtested, then hot-swapped mid-round." delay={20} />
     </Sequence>
 
-    <Sequence from={1680} durationInFrames={450}>
+    <Sequence from={2280} durationInFrames={450}>
       <Slug text="every read path we know of" />
       <Shot name="proof" url="blackbox.app/proof" startFrom={330} delay={6} />
       <Caption text="No token, a stranger, a rival, the upload transaction, the L1 copy, the delegation records." sub={`${FACTS.proofRun} behaved as designed, in 9.6 s`} delay={20} />
     </Sequence>
 
-    <Sequence from={2130} durationInFrames={360}>
+    <Sequence from={2730} durationInFrames={360}>
       <Terminal lines={ATTACK_LINES} title="$ bx-attack --cluster devnet" perLine={4} />
       <Caption text="The only read that returns bytes is the owner's." delay={70} />
     </Sequence>
 
-    <Sequence from={2490} durationInFrames={480}>
+    <Sequence from={3090} durationInFrames={480}>
       <Slug text="blind licensing" />
       <Shot name="back" url="blackbox.app/back" delay={6} />
       <Caption
@@ -71,18 +102,18 @@ export const Extended180: React.FC = () => (
       />
     </Sequence>
 
-    <Sequence from={2970} durationInFrames={330}>
+    <Sequence from={3570} durationInFrames={330}>
       <Slug text="hall of fame" />
       <Shot name="hall" url="blackbox.app/hall" delay={6} />
       <Caption text="Results settle back to Solana: ranks, ELO and the hash of each final strategy." delay={20} />
     </Sequence>
 
-    <Sequence from={3300} durationInFrames={420}>
+    <Sequence from={3900} durationInFrames={420}>
       <Terminal lines={E2E_LINES} title="$ CLUSTER=devnet pnpm test:e2e" perLine={4} />
       <Caption text="A full round, end to end, on MagicBlock's devnet TEE validator." delay={80} />
     </Sequence>
 
-    <Sequence from={3720} durationInFrames={240}>
+    <Sequence from={4320} durationInFrames={240}>
       <Stats
         items={[
           { value: FACTS.devnetChecks, label: "devnet checks passing" },
@@ -93,7 +124,7 @@ export const Extended180: React.FC = () => (
       />
     </Sequence>
 
-    <Sequence from={3960} durationInFrames={420}>
+    <Sequence from={4560} durationInFrames={420}>
       <Slug text="what we do not claim" />
       <div style={{ position: "absolute", left: 140, right: 140, top: 260, fontSize: 34, lineHeight: 1.8, color: C.fgMuted }}>
         <div>Trust: Intel TDX and MagicBlock's TEE validator, attestation checked by the client.</div>
@@ -104,7 +135,7 @@ export const Extended180: React.FC = () => (
       <Caption text="The full list ships with the app, at /disclosures." delay={60} />
     </Sequence>
 
-    <Sequence from={4380} durationInFrames={1020}>
+    <Sequence from={4980} durationInFrames={420}>
       <Title line="BLACKBOX" sub="Private Ephemeral Rollup · Native Crank · Pyth Lazer · Ephemeral SPL · VRF · ephemeral accounts" delay={4} />
       <div style={{ position: "absolute", bottom: 120, left: 0, right: 0, textAlign: "center", color: C.fgMuted, fontSize: 26, fontFamily: MONO }}>
         <div>{FACTS.program}</div>

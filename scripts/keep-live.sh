@@ -29,6 +29,8 @@ mkdir -p .mb
 DURATION_TICKS=$(python3 -c "print(int($HOURS * 3600 * 1000 / $TICK_MS))")
 export DURATION_TICKS TICK_MS
 export CLUSTER="${CLUSTER:-devnet}"
+# Anchor reads the admin keypair from this; a service has no shell to inherit it.
+export ANCHOR_WALLET="${ANCHOR_WALLET:-$HOME/.config/solana/id.json}"
 
 say() { echo "$(date -Is) $*" | tee -a "$LOG"; }
 

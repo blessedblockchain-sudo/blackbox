@@ -21,6 +21,7 @@ WorkingDirectory=%WORKDIR%
 Environment=HOURS=12
 Environment=TICK_MS=500
 Environment=CLUSTER=devnet
+Environment=ANCHOR_WALLET=%h/.config/solana/id.json
 # pnpm and solana live in the user's own paths, not the system ones.
 Environment=PATH=%h/.local/share/pnpm:%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=%WORKDIR%/scripts/keep-live.sh

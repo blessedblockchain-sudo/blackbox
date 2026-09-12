@@ -703,11 +703,13 @@ export class BlackboxClient {
    * transaction (the admin must be the mint authority). Goes through sendBase,
    * so transient devnet RPC errors ("Blockhash not found", 429) are retried.
    */
-  async mintTestUsdc(mint: PublicKey, owner: PublicKey, amount: bigint): Promise<string> {
+  async mintTestUsdc(mint: PublicKey, owner: PublicKey, amount: bigint, authority: Keypair = this.admin): Promise<string> {
     const ata = P.ata(mint, owner);
+    const payer = this.admin;
+    const signers = authority.publicKey.equals(payer.publicKey) ? [payer] : [payer, authority];
     return this.sendBase(
-      [createAssociatedTokenAccountIdempotentInstruction(this.admin.publicKey, ata, owner, mint), createMintToInstruction(mint, ata, this.admin.publicKey, amount)],
-      [this.admin],
+      [createAssociatedTokenAccountIdempotentInstruction(payer.publicKey, ata, owner, mint), createMintToInstruction(mint, ata, authority.publicKey, amount)],
+      signers,
       "mint test USDC",
     );
   }

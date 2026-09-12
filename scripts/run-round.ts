@@ -22,6 +22,17 @@ import * as path from "path";
 import * as anchor from "@coral-xyz/anchor";
 import { BlackboxClient, DEVNET_FEEDS, pda, strategies, Cluster } from "../packages/sdk/src";
 
+/**
+ * The test mint's authority. On devnet it is a throwaway faucet key that also
+ * ships in the web app, so visitors can mint themselves test USDC; the admin
+ * keypair (round authority, program upgrade authority) stays out of the client.
+ */
+function mintAuthority(admin: Keypair): Keypair {
+  const p = path.join(ROOT, "packages/sdk/src/devnet-faucet.json");
+  if (CLUSTER !== "devnet" || !fs.existsSync(p)) return admin;
+  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(p, "utf8"))));
+}
+
 const CLUSTER = (process.env.CLUSTER || "local") as Cluster;
 const BOTS = Number(process.env.BOTS || 8);
 const TICK_MS = Number(process.env.TICK_MS || 400);
@@ -207,7 +218,8 @@ async function main() {
   // 4) bots join; backers get SOL + USDC for later
   const wallets = [...bots.map((b) => ({ kp: b.kp, sol: 0.06 })), ...backers.map((b) => ({ kp: b.kp, sol: 0.1 }))];
   await bx.sendBase(wallets.map((w) => SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: w.kp.publicKey, lamports: w.sol * LAMPORTS_PER_SOL })), [admin], "fund bots");
-  for (const w of wallets) await bx.mintTestUsdc(mint, w.kp.publicKey, 2_000n * USDC);
+  const faucet = mintAuthority(admin);
+  for (const w of wallets) await bx.mintTestUsdc(mint, w.kp.publicKey, 2_000n * USDC, faucet);
   for (const b of bots) {
     await bx.join(round, mint, b.kp);
     await bx.delegateEntrant(round, b.kp);
@@ -237,7 +249,7 @@ async function main() {
     try {
       const kp = Keypair.generate();
       await bx.sendBase([SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: kp.publicKey, lamports: 0.05 * LAMPORTS_PER_SOL })], [admin], "fund house");
-      await bx.mintTestUsdc(mint, kp.publicKey, bankroll);
+      await bx.mintTestUsdc(mint, kp.publicKey, bankroll, mintAuthority(admin));
       await bx.depositToEr(kp, mint, bankroll);
       await bx.waitErBalance(kp, mint, bankroll);
       await bx.seedVault(round, mint, bankroll, kp);

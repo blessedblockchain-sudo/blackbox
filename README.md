@@ -87,7 +87,7 @@ Session keys and the Magic Router are **not** used: every transaction is signed 
 | Web app, `apps/web/test` | native | **68/68** | Number and amount formatting (13), the disclosures parser against `docs/DISCLOSURES.md`, chat encoding, the licensing and round-closing instruction builders checked byte for byte against Anchor's own encoding, the public licence registry, the proof view, round-file reading and chain helpers. |
 | Indexer, `services/indexer/test` | native | **8/8** | Public round polling, history and the SSE stream. |
 
-Not verified: mainnet (not attempted); the web app's devnet wallet flow for blind licensing (the UI detects that the program is missing on a cluster and says so, but the flow itself has only been run on local); dark-mode rounds (implemented, run by `MODE=dark` in `scripts/run-round.ts`, not covered by the e2e suite); and the user withdrawal path `withdrawFromEr` (implemented in the SDK, not covered by the e2e suite).
+Not verified: mainnet (not attempted); the round-closing panel on /arena (its builders match Anchor's encoding byte for byte in `apps/web/test/settle-ix.test.ts`, but no round has reached its end since it was written); dark-mode rounds (implemented, run by `MODE=dark` in `scripts/run-round.ts`, not covered by the e2e suite); and the user withdrawal path `withdrawFromEr` (implemented in the SDK, not covered by the e2e suite).
 
 ## Architecture
 

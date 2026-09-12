@@ -95,6 +95,23 @@ export function decodeChat(data: Buffer): ChatMessage[] {
   return out;
 }
 
+/**
+ * Public devnet RPC throttles hard, and a single 429 anywhere (a blockhash
+ * fetch, an account read) otherwise rejects and takes the caller down with it.
+ * Retry 429 and 5xx with backoff so one throttled call cannot kill a round —
+ * this covers every web3.js call made through these connections, in Node and
+ * in the browser.
+ */
+async function retryingFetch(input: any, init?: any): Promise<any> {
+  let delay = 400;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(input, init);
+    if ((res.status !== 429 && res.status < 500) || attempt >= 5) return res;
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 2, 4000);
+  }
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const bn = (v: bigint | number) => new BN(v.toString());
 
@@ -123,7 +140,7 @@ export class BlackboxClient {
   constructor(readonly admin: Keypair, cluster: Cluster = "devnet", overrides: Partial<(typeof ENDPOINTS)[Cluster]> = {}) {
     this.cluster = cluster;
     this.ep = { ...ENDPOINTS[cluster], ...overrides } as any;
-    this.base = new Connection(this.ep.base, { wsEndpoint: this.ep.baseWs, commitment: "confirmed" });
+    this.base = new Connection(this.ep.base, { wsEndpoint: this.ep.baseWs, commitment: "confirmed", fetch: retryingFetch });
     const provider = new anchor.AnchorProvider(this.base, new NodeWallet(admin), { commitment: "confirmed" });
     this.program = new Program<Blackbox>(idl as Blackbox, provider);
     this.validator = this.ep.validator;
@@ -137,14 +154,14 @@ export class BlackboxClient {
     const hit = this.tokens.get(k);
     if (hit) return hit.conn;
     const { token } = await getAuthToken(this.ep.tee, kp.publicKey, (m: Uint8Array) => Promise.resolve(nacl.sign.detached(m, kp.secretKey)));
-    const conn = new Connection(`${this.ep.tee}?token=${token}`, { wsEndpoint: `${this.ep.teeWs}?token=${token}`, commitment: "confirmed" });
+    const conn = new Connection(`${this.ep.tee}?token=${token}`, { wsEndpoint: `${this.ep.teeWs}?token=${token}`, commitment: "confirmed", fetch: retryingFetch });
     this.tokens.set(k, { token, conn });
     return conn;
   }
 
   /** Unauthenticated TEE connection (sees only public accounts). */
   teePublic(): Connection {
-    return new Connection(this.ep.tee, { commitment: "confirmed" });
+    return new Connection(this.ep.tee, { commitment: "confirmed", fetch: retryingFetch });
   }
 
   async verifyAttestation(): Promise<boolean> {

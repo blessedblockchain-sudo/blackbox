@@ -17,7 +17,7 @@ import {
   ephemeralAta,
   permissionPda,
 } from "../lib/espl";
-import { activateLicenseIx, delegateLicenseIxs, openLicenseIxs, scheduleLicenseTickIx } from "../lib/license-ix";
+import { activateLicenseIx, delegateLicenseIxs, openLicenseIxs, scheduleLicenseTickIx, settleLicenseIxs } from "../lib/license-ix";
 import { SystemProgram } from "@solana/web3.js";
 
 // The same Program the SDK builds (BlackboxClient.program), with a connection that is never used.
@@ -104,5 +104,32 @@ describe("license-ix: browser builders match Anchor (as used by BlackboxClient)"
       .remainingAccounts(feeds.flatMap((f, i) => [{ pubkey: marketPda(round, i), isSigner: false, isWritable: true }, { pubkey: f, isSigner: false, isWritable: false }]))
       .instruction();
     expect(flat(scheduleLicenseTickIx(round, buyer, author, feeds, taskId, payer))).to.deep.equal(flat(expected));
+  });
+
+  it("settle_license, which the buyer can send for their own licence", async () => {
+    const nMarkets = 3;
+    const expected = await methods
+      .settleLicense()
+      .accountsPartial({
+        payer: buyer,
+        round,
+        license,
+        buyer,
+        author,
+        custodyAta: ata(mint, license),
+        vaultAta: ata(mint, round),
+        buyerAta: ata(mint, buyer),
+        authorAta: ata(mint, author),
+        permission: permissionPda(license),
+        permissionProgram: PERMISSION_PROGRAM_ID,
+        ephemeralVault: EPHEMERAL_VAULT_ID,
+        magicProgram: MAGIC_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .remainingAccounts(Array.from({ length: nMarkets }, (_, i) => ({ pubkey: marketPda(round, i), isSigner: false, isWritable: true })))
+      .instruction();
+    const ixs = settleLicenseIxs(round, mint, buyer, author, nMarkets);
+    expect(ixs).to.have.length(2);
+    expect(flat(ixs[1])).to.deep.equal(flat(expected));
   });
 });

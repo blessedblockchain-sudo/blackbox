@@ -104,6 +104,36 @@ export function activateLicenseIx(round: PublicKey, mint: PublicKey, buyer: Publ
   );
 }
 
+/**
+ * ER: close the licence at the final marks, pay the author its accrued fees and
+ * return the rest to the buyer. Permissionless, so the buyer can run it on their
+ * own licence once the round is settling instead of waiting for the operator.
+ */
+export function settleLicenseIxs(round: PublicKey, mint: PublicKey, buyer: PublicKey, author: PublicKey, nMarkets: number, payer: PublicKey = buyer): TransactionInstruction[] {
+  const license = licensePda(round, buyer, author);
+  const remaining: AccountMeta[] = Array.from({ length: nMarkets }, (_, i) => ({ pubkey: marketPda(round, i), isSigner: false, isWritable: true }));
+  return [
+    cu(800_000),
+    buildIx(
+      "settle_license",
+      {},
+      {
+        payer,
+        round,
+        license,
+        buyer,
+        author,
+        custody_ata: ata(mint, license),
+        vault_ata: ata(mint, round),
+        buyer_ata: ata(mint, buyer),
+        author_ata: ata(mint, author),
+        permission: permissionPda(license),
+      },
+      remaining,
+    ),
+  ];
+}
+
 /** ER: one Native Crank task that runs tick_license for the rest of the round. */
 export function scheduleLicenseTickIx(round: PublicKey, buyer: PublicKey, author: PublicKey, feeds: PublicKey[], taskId: number, payer: PublicKey): TransactionInstruction {
   const remaining: AccountMeta[] = feeds.flatMap((feed, i) => [

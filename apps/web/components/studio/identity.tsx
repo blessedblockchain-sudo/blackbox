@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletReadyState } from "@solana/wallet-adapter-base";
+import { WalletReadyState, type WalletName } from "@solana/wallet-adapter-base";
 import { Bot, KeyRound, Wallet } from "lucide-react";
 import type { PublicEntrant, PublicRoundInfo } from "../../lib/api-types";
 import { shortAddr } from "../../lib/format";
@@ -82,21 +82,49 @@ function BotPicker({ info, identity, onChange }: { info: PublicRoundInfo; identi
   );
 }
 
-/** Connect a Wallet Standard wallet and sign the TEE login challenge (also used by /back on devnet). */
+/**
+ * Connect a Wallet Standard wallet and sign the TEE login challenge (also used
+ * by /back on devnet).
+ *
+ * Everything here depends on what is installed in the visitor's browser, which
+ * the prerendered HTML cannot know, so the whole body waits for mount: without
+ * that, a page built with no wallet and opened with one hydrates into a
+ * mismatch and React throws the subtree away.
+ */
 export function WalletPicker({ info, identity, onChange }: { info: PublicRoundInfo; identity: Identity | null; onChange: (id: Identity | null) => void }) {
   const { wallets, wallet, select, connect, disconnect, connected, connecting, publicKey, signMessage } = useWallet();
   const [pending, setPending] = useState(false);
   const [authing, setAuthing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const available = wallets.filter((w) => w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable);
 
-  // select() is async state: connect once the chosen adapter is in place.
-  useEffect(() => {
-    if (pending && wallet && !connected && !connecting) {
+  // `select()` only stores the choice; `connect()` refuses until the provider has
+  // resolved that name to an adapter, a render later. Read the live context
+  // through a ref and poll it, rather than depending on an effect firing with
+  // exactly the right combination of states.
+  const live = useRef({ wallet, connect, connected, connecting });
+  live.current = { wallet, connect, connected, connecting };
+
+  const pick = async (name: WalletName) => {
+    setError(null);
+    select(name);
+    setPending(true);
+    try {
+      for (let i = 0; i < 120; i++) {
+        const s = live.current;
+        if (s.connected) return;
+        if (s.wallet && !s.connecting) return await s.connect();
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error(`${name} did not respond. Unlock the extension and try again.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
       setPending(false);
-      connect().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     }
-  }, [pending, wallet, connected, connecting, connect]);
+  };
 
   // Track the connected wallet as the identity (token cleared on account change).
   const pk = publicKey?.toBase58() ?? null;
@@ -123,6 +151,8 @@ export function WalletPicker({ info, identity, onChange }: { info: PublicRoundIn
     }
   };
 
+  if (!mounted) return <p className="text-sm text-fg-dim">Looking for a wallet in this browser…</p>;
+
   if (!connected) {
     return (
       <div>
@@ -131,12 +161,9 @@ export function WalletPicker({ info, identity, onChange }: { info: PublicRoundIn
             {available.map((w) => (
               <button
                 key={w.adapter.name}
-                onClick={() => {
-                  setError(null);
-                  select(w.adapter.name);
-                  setPending(true);
-                }}
-                className="flex min-h-10 items-center gap-2 border border-edge px-2 text-left font-mono text-xs text-fg transition-colors duration-150 hover:border-edge-strong"
+                onClick={() => void pick(w.adapter.name)}
+                disabled={pending}
+                className="flex min-h-10 items-center gap-2 border border-edge px-2 text-left font-mono text-xs text-fg transition-colors duration-150 hover:border-edge-strong disabled:opacity-50"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {w.adapter.icon ? <img src={w.adapter.icon} alt="" className="size-4" /> : null}
@@ -147,7 +174,7 @@ export function WalletPicker({ info, identity, onChange }: { info: PublicRoundIn
         ) : (
           <p className="text-sm text-fg-dim">No Solana wallet detected in this browser. Install Phantom, Solflare or Backpack{info.localRoutes ? ", or act as a bot on this local round" : ""}.</p>
         )}
-        {connecting ? <p className="mt-2 text-xs text-fg-dim">Waiting for the wallet…</p> : null}
+        {connecting || pending ? <p className="mt-2 text-xs text-fg-dim">Waiting for the wallet…</p> : null}
         {error ? <p className="mt-2 text-xs text-loss" role="alert">{error}</p> : null}
       </div>
     );

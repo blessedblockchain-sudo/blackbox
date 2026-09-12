@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import type { PublicRoundInfo } from "../../lib/api-types";
-import { MAX_LICENSES_PER_AUTHOR, lockedFeeBps, type MarketView, type RoundView } from "../../lib/chain";
+import { MAX_LICENSES_PER_AUTHOR, lockedFeeBps, type RoundView } from "../../lib/chain";
 import { checkRange, formatUsdcAmount, parseUsdcInput } from "../../lib/amount";
 import { formatBps, formatInt, formatUsd, shortAddr } from "../../lib/format";
 import { Button, Panel, PanelHeader, Stat } from "../ui";
@@ -168,7 +168,6 @@ export function BackPanel({
   gate,
   local,
   back,
-  markets,
 }: {
   info: PublicRoundInfo;
   round: RoundView | null;
@@ -176,7 +175,6 @@ export function BackPanel({
   gate: string | null;
   local: boolean;
   back: BackStateHandle;
-  markets: (MarketView | null)[];
 }) {
   if (!author) {
     return (
@@ -213,7 +211,7 @@ export function BackPanel({
       {local ? (
         <LocalBackForm author={author} round={round} block={block} back={back} lock={lock} />
       ) : info.cluster === "devnet" ? (
-        <WalletBackFlow info={info} round={round} author={author} block={block} lock={lock} markets={markets} />
+        <WalletBackFlow info={info} round={round} author={author} block={block} lock={lock} />
       ) : (
         <p className="border-t border-edge px-3 py-3 text-xs text-fg-dim">
           Backing on a local round runs through the local server, which only answers pages served from localhost. Open this page from the machine running the round.

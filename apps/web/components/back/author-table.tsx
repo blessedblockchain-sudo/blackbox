@@ -36,7 +36,7 @@ export function rowBlock(row: AuthorRow, gate: string | null): string | null {
   if (row.settled) return "This entrant is settled: its book is closed and its strategy hash is published.";
   if (row.alive === false) return "Liquidated: there is nothing left to run.";
   if ((row.licenseCount ?? 0) >= MAX_LICENSES_PER_AUTHOR) return `All ${MAX_LICENSES_PER_AUTHOR} licenses on this strategy are taken.`;
-  if (row.youBack) return "The web backer already backs this strategy in this round.";
+  if (row.youBack) return "You already back this strategy in this round.";
   return null;
 }
 

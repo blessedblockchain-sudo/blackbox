@@ -1,106 +1,62 @@
 "use client";
 /**
- * Blind licensing from a browser wallet (devnet). The wallet signs the L1
- * transactions through the wallet adapter and the rollup transactions are sent
- * to the TEE endpoint with the wallet's auth token (lib/tee-auth.ts). Steps a
- * browser cannot do (fund a wallet, register with the operator's round file)
- * are shown as such, not faked.
+ * Blind licensing from a browser wallet on devnet.
+ *
+ * Five transactions, all signed by the visitor's wallet: open_license and
+ * delegate_license on Solana L1, an Ephemeral SPL deposit that moves the test
+ * USDC into the rollup, then activate_license and schedule_license_tick sent to
+ * the TEE endpoint with the wallet's own auth token (lib/tee-auth.ts).
+ *
+ * The one hard constraint: a wallet can deposit into the rollup only once per
+ * round — a second `delegateSpl` fails because the ephemeral ATA is already
+ * delegated — so the first deposit moves the wallet's whole test-USDC balance
+ * in and later licences draw on it.
  */
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Connection, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import type { BackJob, BackerLicense, JobStep, PublicRoundInfo, StepLayer } from "../../lib/api-types";
-import { PROGRAM_ID, decodeAccount, licensePda, toLicenseView, type MarketView, type RoundView } from "../../lib/chain";
+import type { BackJob, JobStep, PublicRoundInfo, StepLayer } from "../../lib/api-types";
+import { PROGRAM_ID, decodeAccount, licensePda, toLicenseView, type RoundView } from "../../lib/chain";
 import { activateLicenseIx, delegateLicenseIxs, openLicenseIxs, scheduleLicenseTickIx } from "../../lib/license-ix";
 import { DELEGATION_PROGRAM_ID, ata, depositSplIxs, ephemeralAta, tokenAmount } from "../../lib/espl";
-import { checkRange, formatUsdcAmount, parseUsdcInput } from "../../lib/amount";
+import { checkRange, formatSol, formatUsdcAmount, parseUsdcInput } from "../../lib/amount";
 import { baseTxExplorer, erTxExplorer } from "../../lib/explorer";
 import { formatBps, shortAddr } from "../../lib/format";
 import { tokenUrl } from "../../lib/tee-auth";
+import { identityOwner, identityToken, useSharedIdentity } from "../../lib/wallet-identity";
+import { SOL_NEEDED } from "../try/try-live";
 import { WalletPicker } from "../studio/identity";
-import type { Identity } from "../studio/use-owner";
 import { Button } from "../ui";
 import type { AuthorRow } from "./author-table";
 import { JobPanel } from "./job-steps";
-import { LicenseCard } from "./my-licenses";
 
 const STEPS: [string, string, StepLayer][] = [
   ["funds", "Check your wallet: SOL and the round's test USDC", "l1"],
-  ["open", "open_license: License + custody accounts", "l1"],
-  ["record", "List the license with the round operator", "local"],
+  ["open", "open_license: your License and its custody accounts", "l1"],
   ["delegate", "delegate_license: hand the License to the TEE validator", "l1"],
-  ["deposit", "Deposit USDC into the rollup (Ephemeral SPL)", "l1"],
-  ["erBalance", "Wait for the deposit on the rollup", "wait"],
-  ["erLicense", "Wait for the License on the rollup", "wait"],
+  ["deposit", "Move your test USDC into the rollup (Ephemeral SPL)", "l1"],
+  ["erBalance", "Wait for the deposit to land on the rollup", "wait"],
+  ["erLicense", "Wait for the License to appear on the rollup", "wait"],
   ["activate", "activate_license: private to you and the author, margin in, fee locked", "er"],
   ["schedule", "schedule_license_tick: the crank runs the author's code on your book", "er"],
 ];
 
-const RECORD_NOTE =
-  "Not possible from a browser: the operator's round runner settles the licenses listed in its own round file, which this page cannot write. settle_license is permissionless, so once the round is settling anyone can settle this license (the operator, you, or a script).";
+/** Rent and fees for open_license + delegate_license + the deposit: 0.0141 SOL measured on devnet. */
+const SOL_FOR_LICENSE = 0.016;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const usdc = (micro: bigint) => formatUsdcAmount(Number(micro) / 1e6);
 
-/** Poll the wallet's own License: L1 first, the ER (with its token) only once it is delegated there. */
-function useWalletLicense(info: PublicRoundInfo, owner: string | null, token: string | null, author: string | null, nonce: number) {
-  const { connection } = useConnection();
-  const [lic, setLic] = useState<BackerLicense | null>(null);
-  useEffect(() => {
-    setLic(null);
-    if (!owner || !author || !info.round) return;
-    let stop = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const key = licensePda(new PublicKey(info.round), new PublicKey(owner), new PublicKey(author));
-    const tee = token ? new Connection(tokenUrl(info.endpoints.tee, token), { commitment: "processed" }) : null;
-    const load = async () => {
-      try {
-        const l1 = await connection.getAccountInfo(key, "confirmed");
-        let data: Uint8Array | null = null;
-        if (l1?.owner.equals(DELEGATION_PROGRAM_ID)) data = tee ? ((await tee.getAccountInfo(key, "processed"))?.data ?? null) : null;
-        else if (l1) data = l1.data;
-        if (!stop) setLic(data ? { author, authorName: "", license: key.toBase58(), scheduled: null, view: toLicenseView(decodeAccount("license", data)), error: null } : null);
-      } catch (e) {
-        if (!stop) setLic({ author, authorName: "", license: key.toBase58(), scheduled: null, view: null, error: e instanceof Error ? e.message : String(e) });
-      }
-      if (!stop) timer = setTimeout(load, document.hidden ? 8000 : 2000);
-    };
-    load();
-    return () => {
-      stop = true;
-      clearTimeout(timer);
-    };
-  }, [connection, info.round, info.endpoints.tee, owner, token, author, nonce]);
-  return lic;
-}
-
-export function WalletBackFlow({
-  info,
-  round,
-  author,
-  block,
-  lock,
-  markets,
-}: {
-  info: PublicRoundInfo;
-  round: RoundView | null;
-  author: AuthorRow;
-  block: string | null;
-  lock: number | null;
-  markets: (MarketView | null)[];
-}) {
+export function WalletBackFlow({ info, round, author, block, lock }: { info: PublicRoundInfo; round: RoundView | null; author: AuthorRow; block: string | null; lock: number | null }) {
   const { connection } = useConnection();
   const wallet = useWallet();
-  const [identity, setIdentity] = useState<Identity | null>(null);
-  const owner = identity?.kind === "wallet" ? identity.owner : null;
-  const token = identity?.kind === "wallet" ? identity.token : null;
+  const [identity, setIdentity] = useSharedIdentity();
+  const owner = identityOwner(identity);
+  const token = identityToken(identity);
   const [deployed, setDeployed] = useState<boolean | null>(null);
-  const [margin, setMargin] = useState("200");
+  const [margin, setMargin] = useState("100");
   const [touched, setTouched] = useState(false);
   const [job, setJob] = useState<BackJob | null>(null);
-  const [nonce, setNonce] = useState(0);
-  const jobRef = useRef<BackJob | null>(null);
-  const lic = useWalletLicense(info, owner, token, author.owner, nonce);
 
   useEffect(() => {
     let stop = false;
@@ -128,7 +84,7 @@ export function WalletBackFlow({
           : !wallet.signTransaction || !wallet.sendTransaction
             ? "This wallet cannot sign transactions."
             : running
-              ? "Setting up your license."
+              ? "Setting up your licence."
               : null);
 
   const run = async (marginMicro: bigint) => {
@@ -153,7 +109,6 @@ export function WalletBackFlow({
       error: null,
       steps: STEPS.map(([key, label, layer]): JobStep => ({ key, label, layer, status: "pending" })),
     };
-    jobRef.current = j;
     const commit = () => setJob({ ...j, steps: j.steps.map((s) => ({ ...s })) });
     commit();
 
@@ -202,7 +157,8 @@ export function WalletBackFlow({
       return sig;
     };
     const erBalance = async (): Promise<bigint> => {
-      // Read the rollup balance only once the ephemeral ATA is delegated (see BlackboxClient.hasErDeposit).
+      // Read the rollup balance only once the ephemeral ATA is delegated (see BlackboxClient.hasErDeposit):
+      // an earlier read makes the ER clone the ATA as a plain account that later writes reject.
       const eata = await connection.getAccountInfo(ephemeralAta(me, mint), "confirmed");
       if (!eata?.owner.equals(DELEGATION_PROGRAM_ID)) return -1n;
       return tokenAmount((await tee.getAccountInfo(ata(mint, me), "processed"))?.data) ?? 0n;
@@ -213,34 +169,42 @@ export function WalletBackFlow({
       await step("funds", async () => {
         const [sol, usdcInfo, er] = await Promise.all([connection.getBalance(me, "confirmed"), connection.getAccountInfo(ata(mint, me), "confirmed"), erBalance()]);
         const l1 = tokenAmount(usdcInfo?.data) ?? 0n;
-        if (sol < 50_000_000) throw new Error(`Your wallet has ${formatUsdcAmount(sol / 1e9)} SOL on ${info.cluster}; it needs about 0.05 SOL for rent and fees. There is no faucet on this page.`);
-        if (er >= marginMicro) return { detail: `${usdc(er)} USDC already on the rollup` };
-        if (er >= 0n) throw new Error(`You have ${usdc(er)} USDC on the rollup and this page only deposits into a fresh rollup account; back with at most ${usdc(er)} USDC.`);
+        if (sol < SOL_FOR_LICENSE * 1e9)
+          throw new Error(
+            `Your wallet holds ${formatSol(sol / 1e9)} SOL on ${info.cluster} and this needs about ${SOL_FOR_LICENSE} for the licence accounts' rent and fees (about ${SOL_NEEDED} for the whole path). Devnet SOL is free at faucet.solana.com.`,
+          );
+        if (er >= marginMicro) return { detail: `${usdc(er)} USDC already on the rollup, no deposit needed` };
+        if (er >= 0n)
+          throw new Error(
+            `You have ${usdc(er)} USDC inside the rollup and a wallet can deposit only once per round (the second Ephemeral SPL delegate fails on the already-delegated account). Back with at most ${usdc(er)} USDC, or use another wallet.`,
+          );
         if (l1 < marginMicro)
-          throw new Error(`Your wallet holds ${usdc(l1)} of the round's test USDC (mint ${shortAddr(mint.toBase58())}) and the margin needs ${usdc(marginMicro)}. The round admin mints this test token; it is not Circle USDC.`);
-        deposit = marginMicro;
-        return { detail: `${formatUsdcAmount(sol / 1e9)} SOL · ${usdc(l1)} test USDC` };
+          throw new Error(
+            `Your wallet holds ${usdc(l1)} of the round's test USDC (mint ${shortAddr(mint.toBase58())}) and the margin needs ${usdc(marginMicro)}. Use "Get test USDC" in the Try it live panel; it is a test mint, not Circle USDC.`,
+          );
+        // One deposit per wallet per round, so move the whole balance in: later licences draw on it.
+        deposit = l1;
+        return { detail: `${formatSol(sol / 1e9)} SOL · ${usdc(l1)} test USDC` };
       });
       await step("open", async () => {
-        if (await connection.getAccountInfo(license, "confirmed")) return { skipped: true, detail: "License already exists" };
+        if (await connection.getAccountInfo(license, "confirmed")) return { skipped: true, detail: "this License already exists" };
         return { sig: await sendL1(openLicenseIxs(r, mint, me, authorKey)) };
       });
-      await step("record", async () => ({ skipped: true, detail: RECORD_NOTE }));
       await step("delegate", async () => {
         const l1 = await connection.getAccountInfo(license, "confirmed");
         if (l1?.owner.equals(DELEGATION_PROGRAM_ID)) return { skipped: true, detail: "already delegated" };
         return { sig: await sendL1(delegateLicenseIxs(r, me, authorKey, validator)) };
       });
       await step("deposit", async () => {
-        if (deposit === 0n) return { skipped: true, detail: "rollup balance covers the margin" };
-        return { sig: await sendL1(depositSplIxs(me, mint, deposit, validator)), detail: `${usdc(deposit)} USDC` };
+        if (deposit === 0n) return { skipped: true, detail: "your rollup balance already covers the margin" };
+        return { sig: await sendL1(depositSplIxs(me, mint, deposit, validator)), detail: `${usdc(deposit)} USDC — your whole balance, because a wallet deposits once per round` };
       });
       await step("erBalance", async () => {
         const t0 = Date.now();
         for (;;) {
           const b = await erBalance();
           if (b >= marginMicro) return { detail: `${usdc(b)} USDC spendable on the rollup` };
-          if (Date.now() - t0 > 60_000) throw new Error(`rollup balance stuck at ${b < 0n ? "no account" : usdc(b)} after 60 s`);
+          if (Date.now() - t0 > 60_000) throw new Error(`the rollup balance is stuck at ${b < 0n ? "no account" : usdc(b)} after 60 s`);
           await sleep(1000);
         }
       });
@@ -255,7 +219,7 @@ export function WalletBackFlow({
       await step("activate", async () => {
         const cur = await tee.getAccountInfo(license, "processed");
         if (cur && toLicenseView(decodeAccount("license", cur.data)).active) return { skipped: true, detail: "already active" };
-        return { sig: await sendEr([activateLicenseIx(r, mint, me, authorKey, marginMicro)]), detail: `fee locked at ${formatBps(lock, { decimals: 0 })} (read it back below)` };
+        return { sig: await sendEr([activateLicenseIx(r, mint, me, authorKey, marginMicro)]), detail: `fee locked at ${formatBps(lock, { decimals: 0 })} of traded notional` };
       });
       await step("schedule", async () => {
         const taskId = 5_000_000_000 + Math.floor(Math.random() * 1_000_000_000);
@@ -264,7 +228,7 @@ export function WalletBackFlow({
           return { sig: await sendEr([scheduleLicenseTickIx(r, me, authorKey, feeds, taskId, me)]), detail: `task ${taskId}, paid by your wallet on the rollup` };
         } catch (e) {
           throw new Error(
-            `${e instanceof Error ? e.message : String(e)}\nThe license is active but has no crank task. schedule_license_tick accepts any payer, so the round operator can schedule it.`,
+            `${e instanceof Error ? e.message : String(e)}\nThe licence is active and holds your margin, but has no crank task, so it will not trade. schedule_license_tick takes any payer, so it can be retried — press the button again.`,
           );
         }
       });
@@ -275,7 +239,6 @@ export function WalletBackFlow({
     } finally {
       j.finishedAt = Date.now();
       commit();
-      setNonce((n) => n + 1);
     }
   };
 
@@ -330,15 +293,11 @@ export function WalletBackFlow({
         {reason ? <p className="text-xs text-fg-dim">{reason}</p> : null}
       </form>
       <ul className="list-disc space-y-1 pl-4 text-[11px] leading-4 text-fg-dim">
-        <li>Your wallet signs open_license, delegate_license and the USDC deposit on Solana, then activate_license and schedule_license_tick for the rollup, which go to the TEE endpoint with your auth token.</li>
-        <li>{RECORD_NOTE}</li>
+        <li>Your wallet signs three transactions on Solana (open_license, delegate_license, the USDC deposit) and two on the rollup (activate_license, schedule_license_tick), which go to the TEE endpoint with your auth token. Expect five wallet prompts.</li>
+        <li>A wallet can deposit into the rollup only once per round, so the first deposit moves your whole test-USDC balance in; every licence you open afterwards spends from that balance.</li>
+        <li>Your margin comes back when the licence settles, minus the fees the author earned on the notional your book traded — and minus whatever the strategy lost.</li>
       </ul>
       {job ? <JobPanel job={job} /> : null}
-      {lic && (lic.view || lic.error) ? (
-        <div className="border border-edge">
-          <LicenseCard l={{ ...lic, authorName: author.name }} markets={markets} names={info.markets} info={info} />
-        </div>
-      ) : null}
     </div>
   );
 }

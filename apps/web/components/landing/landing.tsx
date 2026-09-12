@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import clsx from "clsx";
 import { PROGRAM_EXPLORER, REPO_URL, asset } from "../../lib/config";
 import { BoxMark } from "../site-nav";
+import { TryItLive } from "../try/try-live";
+import { WalletShell } from "../wallet-shell";
 import { LiveBadge } from "./live-badge";
 
 /**
@@ -83,11 +85,32 @@ export function Landing() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <CtaPrimary href="/arena">Open the app</CtaPrimary>
+            <CtaSecondary href="#try">Try it on devnet</CtaSecondary>
             <CtaSecondary href="#demo">Watch the demo</CtaSecondary>
             <CtaSecondary href={REPO_URL} external>
               View the code
             </CtaSecondary>
           </div>
+        </Wrap>
+      </section>
+
+      {/* Try it live */}
+      <section id="try" className="scroll-mt-14 border-b border-edge py-16 sm:py-20">
+        <Wrap className="grid items-start gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14">
+          <div>
+            <h2 className="text-[30px] leading-9 font-medium tracking-[-0.02em]">Use it, don&apos;t just watch it</h2>
+            <p className="mt-3 max-w-[56ch] text-fg-muted">
+              A browser wallet is enough. Devnet SOL is free, the round&apos;s USDC is a test mint this page can hand you, and backing a sealed strategy is a real transaction against the live round: your
+              margin, the author&apos;s code, the enclave&apos;s crank.
+            </p>
+            <p className="mt-3 max-w-[56ch] text-fg-muted">
+              Five steps, about two minutes, and roughly 0.02 devnet SOL — nearly all of it rent for accounts you end up owning. Nothing here has value; the program, the rollup and the trades are the
+              live ones.
+            </p>
+          </div>
+          <WalletShell>
+            <TryItLive context="landing" />
+          </WalletShell>
         </Wrap>
       </section>
 
@@ -153,8 +176,13 @@ export function Landing() {
               Back a strategy with your own margin and the enclave runs the author&apos;s code against your private book every tick. The fee is a price computed inside the TEE from the author&apos;s
               private Sharpe ratio — the only public trace of how they&apos;re doing.
             </p>
-            <div className="mt-7">
+            <p className="mt-3 max-w-[62ch] text-fg-muted">
+              You can do this now, on devnet, from a browser wallet: the page hands you the test USDC and walks the five transactions, and the licence it opens is readable by exactly two wallets, yours
+              and the author&apos;s.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
               <CtaSecondary href="/back">Browse sealed strategies</CtaSecondary>
+              <CtaSecondary href="#try">Start the five steps</CtaSecondary>
             </div>
           </div>
           <figure className="m-0">
@@ -174,9 +202,10 @@ export function Landing() {
       <section className="border-b border-edge py-20 text-center sm:py-24">
         <Wrap>
           <h2 className="text-[30px] leading-9 font-medium tracking-[-0.02em]">Put a strategy in the box</h2>
-          <p className="mx-auto mt-3 max-w-[62ch] text-fg-muted">Open the arena, write one in BXL, and watch it trade without anyone reading it.</p>
+          <p className="mx-auto mt-3 max-w-[62ch] text-fg-muted">Open the arena, write one in BXL, and watch it trade without anyone reading it — or back someone else&apos;s with a browser wallet and see what sealed code does with your money.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <CtaPrimary href="/arena">Open the app</CtaPrimary>
+            <CtaSecondary href="#try">Try it on devnet</CtaSecondary>
             <CtaSecondary href={REPO_URL} external>
               View the code
             </CtaSecondary>

@@ -2,17 +2,21 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { MotionConfig } from "framer-motion";
-import type { BackerLicense, PublicRoundInfo } from "../../lib/api-types";
+import type { PublicRoundInfo } from "../../lib/api-types";
 import type { EntrantView, RoundView, ScoreboardView } from "../../lib/chain";
 import { useLiveRound, useRoundInfo } from "../../lib/hooks";
+import { identityOwner, identityToken, useSharedIdentity } from "../../lib/wallet-identity";
+import { useAuthors, useWalletLicenses } from "../../lib/wallet-hooks";
 import { noRoundDetail, roundInfoError } from "../../lib/messages";
 import { formatBps, formatInt, returnPct, shortAddr } from "../../lib/format";
 import { Panel, PanelHeader, Skeleton } from "../ui";
 import { phaseLabel } from "../arena/round-header";
+import { TryItLive } from "../try/try-live";
 import { AuthorTable, type AuthorRow } from "./author-table";
 import { BackPanel } from "./back-panel";
 import { JobPanel } from "./job-steps";
 import { MyLicenses } from "./my-licenses";
+import { WalletLicenses } from "./wallet-licenses";
 import { useBackState } from "./use-back-state";
 
 /** Why nobody can back anything right now (null while the round is live). */
@@ -23,7 +27,7 @@ function backingGate(round: RoundView | null): string | null {
   return "This round has ended. Its licenses settle with it: fees to authors, the rest back to backers.";
 }
 
-function buildRows(info: PublicRoundInfo, sb: ScoreboardView | null, entrants: Record<string, EntrantView>, backer: string | null, mine: BackerLicense[]): AuthorRow[] {
+function buildRows(info: PublicRoundInfo, sb: ScoreboardView | null, entrants: Record<string, EntrantView>, backer: string | null, youBack: Set<string>): AuthorRow[] {
   const meta = new Map(info.entrants.map((e) => [e.owner, e]));
   const backersBy = new Map<string, string[]>();
   for (const l of info.licenses) {
@@ -32,7 +36,6 @@ function buildRows(info: PublicRoundInfo, sb: ScoreboardView | null, entrants: R
     if (!list.includes(n)) list.push(n);
     backersBy.set(l.author, list);
   }
-  const youBack = new Set(mine.filter((l) => l.view?.active && !l.view.scrubbed).map((l) => l.author));
   const owners = [...new Set([...(sb?.entries.map((e) => e.owner) ?? []), ...info.entrantOwners, ...info.entrants.map((e) => e.owner)])].filter((o) => o !== backer);
   const rows = owners.map((owner, i): AuthorRow => {
     const ent = entrants[owner];
@@ -99,12 +102,26 @@ export function Back() {
   const { info, error: infoError } = useRoundInfo();
   const live = useLiveRound(info);
   const local = !!info?.localRoutes && !!info?.round;
+  const wallet = info?.cluster === "devnet" && !!info.round;
   const back = useBackState(local);
   const [selected, setSelected] = useState<string | null>(null);
 
+  // The visitor's own wallet: its licences are read straight from the chain on
+  // devnet, where there is no local server holding a backer key.
+  const [identity] = useSharedIdentity();
+  const authors = useAuthors(wallet ? info : null);
+  const walletLicenses = useWalletLicenses(wallet ? info : null, identityOwner(identity), identityToken(identity), authors);
+
   const backer = back.data?.backer.owner ?? null;
   const mine = back.data?.licenses;
-  const rows = useMemo(() => (info ? buildRows(info, live.scoreboard, live.entrants, backer, mine ?? []) : []), [info, live.scoreboard, live.entrants, backer, mine]);
+  const backed = (mine ?? []).filter((l) => l.view?.active && !l.view.scrubbed).map((l) => l.author);
+  const walletBacked = walletLicenses.rows.filter((r) => !r.view || (r.view.active && !r.view.scrubbed)).map((r) => r.author);
+  const youBackKey = [...backed, ...walletBacked].sort().join(",");
+  const rows = useMemo(
+    () => (info ? buildRows(info, live.scoreboard, live.entrants, backer, new Set(youBackKey ? youBackKey.split(",") : [])) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [info, live.scoreboard, live.entrants, backer, youBackKey],
+  );
 
   if (!info) {
     return infoError ? (
@@ -157,11 +174,13 @@ export function Back() {
             )}
           </Panel>
           <div className="flex min-w-0 flex-col gap-3">
-            <BackPanel info={info} round={round} author={selectedRow} gate={gate} local={local} back={back} markets={live.markets} />
+            {wallet ? <TryItLive context="back" /> : null}
+            <BackPanel info={info} round={round} author={selectedRow} gate={gate} local={local} back={back} />
             {latestJob ? <JobPanel job={latestJob} /> : null}
           </div>
         </div>
         {local ? <MyLicenses state={back} markets={live.markets} names={info.markets} info={info} /> : null}
+        {wallet ? <WalletLicenses info={info} round={round} licenses={walletLicenses} authors={authors} markets={live.markets} /> : null}
       </div>
     </MotionConfig>
   );

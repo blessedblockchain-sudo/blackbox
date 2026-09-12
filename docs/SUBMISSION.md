@@ -26,7 +26,14 @@ MagicBlock primitives, all load-bearing:
 DeFi · AI / Agents · Privacy
 
 ## Project website
-(web app URL once deployed)
+https://bprime.gitlab.io/blackbox/
+
+The web app itself, built as a static site and published by the `pages` job in
+`.gitlab-ci.yml` on every push to `main`. It reads Solana devnet from the
+browser: the arena, hall of fame, BXL studio and the privacy proof all work for
+a visitor, and a connected wallet can enter a round, hot-swap a strategy and
+back a sealed one. Two things it needs: GitLab Pages enabled on the project,
+and the project set to public (Pages on a private project serves members only).
 
 ## Repo
 https://gitlab.com/Bprime/blackbox — **must be public before submitting** (GitLab → Settings → General → Visibility → Public).

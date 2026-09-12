@@ -11,7 +11,7 @@ BLACKBOX is a trading league where every strategy is a small program nobody can 
 
 Winning strategies can be licensed blind: a backer puts up margin, and the TEE runs the author's sealed code against the backer's own private book every tick. The fee is a price the program computes inside the TEE from the author's private Sharpe ratio; that price is the only public trace of the author's performance. At the end of the round the program closes every book, pays the author's fees and the prize pot, publishes a hash of each final strategy, zeroes the private state, and only then commits back to Solana.
 
-Verified end to end on devnet against MagicBlock's TEE validator: 42/42 checks, including TDX attestation, owner-only reads, blind licensing, and every private account returning to L1 as zeros.
+Verified end to end on devnet against MagicBlock's TEE validator: 43/43 checks, including TDX attestation, owner-only reads, blind licensing, every private account returning to L1 as zeros, and the upload transaction staying redacted to a stranger after the round settles.
 
 MagicBlock primitives, all load-bearing:
 - **Private Ephemeral Rollup (TEE)**: Strategy, Position and License accounts carry ephemeral permissions (owner only; buyer + author for a License). No-token, stranger and rival reads return null; the hot-swap transaction's message is hidden from non-members. Clients verify the enclave with TDX attestation.
@@ -52,7 +52,7 @@ Rebuild either with `pnpm --filter @blackbox/video render:90` / `render:extended
 `delegate_round` on devnet: the BLACKBOX program hands the round to MagicBlock's TEE validator through the Delegation program.
 https://explorer.solana.com/tx/5b44mnJhjLrLgNoJBPxchTatrQ2RPeg23FC4RwR5TWvr19WaFAmY9K9BL4a2iZheDP5XE2tkQwAvHUEDF8JSaSo2?cluster=devnet
 
-More devnet evidence from the same 42/42 run (round #1 `EHfSy9AYJ6ZBrdSEEa7GUroyEAFVHch9m6fKATrEaPNZ`):
+More devnet evidence, from the first full devnet run (round #1 `EHfSy9AYJ6ZBrdSEEa7GUroyEAFVHch9m6fKATrEaPNZ`):
 
 | Step | Layer | Transaction |
 |---|---|---|

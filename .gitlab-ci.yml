@@ -1,0 +1,14 @@
+# GitLab Pages: publishes site/ as the project website.
+# URL: https://bprime.gitlab.io/blackbox/  (Pages must be enabled; a private
+# project serves it to members only until the project is public).
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - mkdir -p public
+    - cp -r site/. public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

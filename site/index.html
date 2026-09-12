@@ -3,118 +3,185 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BLACKBOX — alpha you can't read</title>
-<meta name="description" content="A trading league where every strategy runs inside a MagicBlock Private Ephemeral Rollup. Nobody can read your code, and it still settles on Solana.">
+<title>BLACKBOX — sealed trading strategies on Solana</title>
+<meta name="description" content="A trading league where every strategy runs sealed inside a MagicBlock Private Ephemeral Rollup, trades live perps, and settles on Solana.">
+<meta property="og:title" content="BLACKBOX — alpha you can't read">
+<meta property="og:description" content="Strategies run sealed inside a TEE, trade live perps on Pyth prices, and settle on Solana.">
 <style>
-  :root {
-    --canvas:#09090b; --surface:#0e0e11; --surface2:#141418; --edge:#1e1e24; --edge2:#2e2e36;
-    --fg:#ececee; --muted:#a1a1aa; --dim:#71717a; --live:#14f195; --sealed:#9945ff;
+  :root{
+    --bg:#09090b; --panel:#0f0f12; --panel2:#141418; --line:#1f1f26; --line2:#2c2c35;
+    --fg:#f2f2f4; --muted:#a8a8b3; --dim:#75757f; --accent:#14f195; --accent2:#9945ff;
     --mono:"JetBrains Mono","SF Mono",ui-monospace,monospace;
+    --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
   }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--canvas); color:var(--fg); font:16px/1.65 Inter,system-ui,-apple-system,sans-serif; }
-  .wrap { max-width:980px; margin:0 auto; padding:0 24px; }
-  header { border-bottom:1px solid var(--edge); padding:22px 0; position:sticky; top:0; background:rgba(9,9,11,.9); backdrop-filter:blur(8px); z-index:5; }
-  header .wrap { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-  .logo { font-family:var(--mono); letter-spacing:.22em; font-weight:600; }
-  .tag { color:var(--dim); font-size:14px; }
-  nav { margin-left:auto; display:flex; gap:18px; font-size:14px; font-family:var(--mono); }
-  nav a { color:var(--muted); text-decoration:none; }
-  nav a:hover { color:var(--fg); }
-  h1 { font-size:clamp(38px,6vw,68px); line-height:1.05; letter-spacing:-.03em; margin:64px 0 18px; }
-  h2 { font-size:26px; letter-spacing:-.01em; margin:56px 0 14px; }
-  .lede { font-size:20px; color:var(--muted); max-width:70ch; }
-  video, img { width:100%; border:1px solid var(--edge2); border-radius:12px; display:block; background:#050506; }
-  figure { margin:20px 0 0; }
-  figcaption { color:var(--dim); font-size:14px; font-family:var(--mono); margin-top:8px; }
-  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin-top:20px; }
-  .card { border:1px solid var(--edge); background:var(--surface); border-radius:12px; padding:18px 20px; }
-  .card .n { font-family:var(--mono); font-size:30px; font-weight:600; }
-  .card .l { color:var(--muted); font-size:14px; margin-top:4px; }
-  ol.steps { font-family:var(--mono); color:var(--muted); font-size:15px; line-height:2; padding-left:22px; }
-  ul.plain { list-style:none; padding:0; color:var(--muted); }
-  ul.plain li { padding:9px 0; border-bottom:1px solid var(--edge); }
-  a { color:var(--fg); }
-  code, .mono { font-family:var(--mono); font-size:14px; }
-  .pill { display:inline-block; font-family:var(--mono); font-size:12px; color:var(--muted); border:1px solid var(--edge2); border-radius:999px; padding:4px 10px; margin:0 6px 6px 0; }
-  footer { margin:80px 0 60px; padding-top:24px; border-top:1px solid var(--edge); color:var(--dim); font-size:14px; }
-  .cta { display:inline-block; margin:22px 14px 0 0; padding:12px 20px; border:1px solid var(--edge2); border-radius:8px; text-decoration:none; font-family:var(--mono); font-size:14px; }
-  .cta:hover { border-color:var(--fg); }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+  a{color:inherit}
+
+  header{position:sticky;top:0;z-index:10;background:rgba(9,9,11,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  header .wrap{display:flex;align-items:center;gap:28px;height:68px}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:var(--mono);letter-spacing:.2em;font-weight:600;font-size:15px}
+  .brand .dot{width:10px;height:10px;border-radius:3px;background:var(--accent)}
+  header nav{display:flex;gap:24px;font-size:14px;color:var(--muted);margin-left:8px}
+  header nav a{text-decoration:none}
+  header nav a:hover{color:var(--fg)}
+  .spacer{flex:1}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;border:1px solid var(--line2);transition:.15s}
+  .btn:hover{border-color:var(--fg)}
+  .btn-primary{background:var(--fg);color:#09090b;border-color:var(--fg)}
+  .btn-primary:hover{opacity:.88}
+
+  .hero{padding:96px 0 72px;border-bottom:1px solid var(--line)}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 14px;margin-bottom:26px}
+  .eyebrow .live{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  h1{font-size:clamp(40px,5.6vw,64px);line-height:1.06;letter-spacing:-.035em;margin:0 0 22px;max-width:17ch}
+  .sub{font-size:19px;color:var(--muted);max-width:62ch;margin:0 0 34px}
+  .hero-actions{display:flex;gap:14px;flex-wrap:wrap}
+
+  section{padding:76px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:30px;letter-spacing:-.02em;margin:0 0 12px}
+  .section-sub{color:var(--muted);max-width:62ch;margin:0 0 34px}
+
+  .cards{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:24px}
+  .card h3{margin:0 0 8px;font-size:17px;letter-spacing:-.01em}
+  .card p{margin:0;color:var(--muted);font-size:15px}
+
+  .metrics{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .metric{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:22px 24px}
+  .metric .v{font-family:var(--mono);font-size:30px;font-weight:600;letter-spacing:-.02em}
+  .metric .k{color:var(--muted);font-size:14px;margin-top:6px}
+
+  figure{margin:0}
+  video,figure img{width:100%;display:block;border:1px solid var(--line2);border-radius:12px;background:#050506}
+  figcaption{color:var(--dim);font-size:13.5px;margin-top:12px}
+
+  .split{display:grid;gap:44px;grid-template-columns:1fr 1fr;align-items:center}
+  @media(max-width:860px){.split{grid-template-columns:1fr;gap:28px}header nav{display:none}}
+
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  ol.steps li{counter-increment:s;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:22px 24px}
+  ol.steps li::before{content:counter(s);display:block;font-family:var(--mono);font-size:13px;color:var(--accent);margin-bottom:10px}
+  ol.steps strong{display:block;font-weight:600;margin-bottom:6px}
+  ol.steps span{color:var(--muted);font-size:15px}
+
+  .chips span{display:inline-block;font-family:var(--mono);font-size:12.5px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 13px;margin:0 8px 8px 0}
+  .addr{font-family:var(--mono);font-size:13.5px;color:var(--muted);word-break:break-all}
+  .addr a{color:var(--fg)}
+
+  .cta-band{padding:84px 0;text-align:center}
+  .cta-band h2{margin-bottom:14px}
+  .cta-band .hero-actions{justify-content:center}
+
+  footer{padding:40px 0 64px;color:var(--dim);font-size:14px}
+  footer .links{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
+  footer a{text-decoration:none;color:var(--muted)}
+  footer a:hover{color:var(--fg)}
 </style>
 </head>
 <body>
+
 <header><div class="wrap">
-  <span class="logo">BLACKBOX</span><span class="tag">Alpha you can't read.</span>
-  <nav><a href="#demo">Demo</a><a href="#verified">Verified</a><a href="#how">How</a><a href="#limits">Limits</a><a href="https://gitlab.com/Bprime/blackbox">Code</a></nav>
+  <a class="brand" href="#top"><span class="dot"></span>BLACKBOX</a>
+  <nav>
+    <a href="#product">Product</a><a href="#demo">Demo</a><a href="#how">How it works</a><a href="#proof">Proof</a>
+  </nav>
+  <span class="spacer"></span>
+  <a class="btn btn-primary" href="https://gitlab.com/Bprime/blackbox#quickstart-local">Open the app</a>
 </div></header>
 
-<main class="wrap">
-  <h1>Every strategy on Solana is public the moment it trades.</h1>
-  <p class="lede">Copy bots mirror it. Front-runners tax it. A leaderboard leaks it. So the best traders keep their edge off-chain, in someone else's black box. BLACKBOX runs the code inside a TEE instead, and still settles on Solana.</p>
-  <p class="lede" style="margin-top:18px">Strategies are bytecode for an on-chain VM. The program executes them inside a MagicBlock Private Ephemeral Rollup on every crank tick, against live Pyth Lazer prices, trading a perps book with test USDC. Rivals, spectators and the rollup operator see an equity leaderboard and nothing else.</p>
-  <a class="cta" href="#demo">Watch the 90-second demo</a>
-  <a class="cta" href="https://gitlab.com/Bprime/blackbox">Read the code</a>
+<main id="top">
+  <div class="hero"><div class="wrap">
+    <span class="eyebrow"><span class="live"></span>Live on Solana devnet</span>
+    <h1>Alpha you can't read.</h1>
+    <p class="sub">BLACKBOX is a trading league where every strategy is a sealed program. It runs inside a MagicBlock Private Ephemeral Rollup on every tick, trades perps against live Pyth prices, and settles on Solana. Everyone sees the equity curve. Nobody sees the code.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="https://gitlab.com/Bprime/blackbox#quickstart-local">Open the app</a>
+      <a class="btn" href="#demo">Watch the demo</a>
+      <a class="btn" href="https://gitlab.com/Bprime/blackbox">View the code</a>
+    </div>
+  </div></div>
 
-  <h2 id="demo">Demo</h2>
-  <figure>
-    <video controls preload="metadata" poster="./assets/arena.png" src="./assets/blackbox-90s.mp4"></video>
-    <figcaption>Filmed against a live devnet round on MagicBlock's TEE validator. No mockups.</figcaption>
-  </figure>
+  <section id="product"><div class="wrap">
+    <h2>Built for traders who don't want to be copied</h2>
+    <p class="section-sub">Upload bytecode for an on-chain VM. The program executes it inside the enclave, marks your book against live oracle prices, and keeps the logic and your positions readable only by you.</p>
+    <div class="cards">
+      <div class="card"><h3>Sealed strategies</h3><p>Your code and positions are readable only with your own key. Rivals, spectators and the rollup operator get nothing back.</p></div>
+      <div class="card"><h3>Real perps, live prices</h3><p>SOL, BTC and ETH books marked on Pyth Lazer prices, with spread, funding, leverage caps and liquidation.</p></div>
+      <div class="card"><h3>Blind licensing</h3><p>Back an author's sealed strategy with your own margin. The enclave prices the fee from their private Sharpe ratio.</p></div>
+      <div class="card"><h3>Settles on Solana</h3><p>Books close, fees and prizes pay out, each final strategy's hash is published, and results commit back to L1.</p></div>
+    </div>
+  </div></section>
 
-  <h2 id="verified">What is verified</h2>
-  <div class="grid">
-    <div class="card"><div class="n">42/42</div><div class="l">checks on devnet + devnet-tee</div></div>
-    <div class="card"><div class="n">42/42</div><div class="l">the same suite on the local stack</div></div>
-    <div class="card"><div class="n">14/14</div><div class="l">read paths behaved as designed</div></div>
-    <div class="card"><div class="n">32/32</div><div class="l">primitive checks in the Phase 0 spike</div></div>
-  </div>
-  <p style="margin-top:18px">Program <code>BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27</code> —
-    <a href="https://explorer.solana.com/address/BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27?cluster=devnet">on the explorer</a>.
-    Integration proof: <a href="https://explorer.solana.com/tx/5b44mnJhjLrLgNoJBPxchTatrQ2RPeg23FC4RwR5TWvr19WaFAmY9K9BL4a2iZheDP5XE2tkQwAvHUEDF8JSaSo2?cluster=devnet"><code>delegate_round</code></a>,
-    where the program hands a round to MagicBlock's TEE validator.</p>
+  <section id="demo"><div class="wrap">
+    <h2>See a round</h2>
+    <p class="section-sub">Ninety seconds, filmed against a live devnet round on MagicBlock's TEE validator.</p>
+    <figure>
+      <video controls preload="metadata" poster="./assets/arena.png" src="./assets/blackbox-90s.mp4"></video>
+      <figcaption>The arena mid-round: sealed tiles, live marks, the mystery market drawn by VRF, and the solvency beacon.</figcaption>
+    </figure>
+  </div></section>
 
-  <figure><img src="./assets/proof.png" alt="The privacy proof page running its read matrix against a live entrant">
-    <figcaption>/proof runs the attack matrix live: no token, a fresh wallet, a rival entrant, the upload transaction, the L1 copy, the delegation records.</figcaption></figure>
+  <section id="how"><div class="wrap">
+    <h2>How it works</h2>
+    <p class="section-sub">Four moves, from joining on Solana to settling back to it.</p>
+    <ol class="steps">
+      <li><strong>Join and delegate</strong><span>Your accounts are created empty on Solana, then delegated to the TEE validator with timer commits off.</span></li>
+      <li><strong>Seal and upload</strong><span>Permissions name you as the only reader. Your bytecode arrives in a rollup transaction whose message stays hidden.</span></li>
+      <li><strong>Trade every tick</strong><span>The Native Crank runs your strategy in the enclave against live prices, marking your book and updating the public leaderboard.</span></li>
+      <li><strong>Settle</strong><span>Books close, fees and prizes pay in real tokens, hashes are published, private state is zeroed, results commit to Solana.</span></li>
+    </ol>
+  </div></section>
 
-  <h2 id="how">How a round works</h2>
-  <ol class="steps">
-    <li>join on Solana: Entrant, Strategy and Position are created empty</li>
-    <li>delegate all three to MagicBlock's TEE validator, timer commits off</li>
-    <li>privatize: ephemeral permissions with one member, the owner</li>
-    <li>upload bytecode in a rollup transaction whose message stays hidden</li>
-    <li>the Native Crank ticks each entrant against Pyth Lazer prices</li>
-    <li>settle: close books, pay fees and prizes, publish hashes</li>
-    <li>scrub the private state, then commit zeros back to Solana</li>
-  </ol>
+  <section><div class="wrap split">
+    <div>
+      <h2>Licence alpha you can't see</h2>
+      <p class="section-sub">Back a strategy with your own margin and the enclave runs the author's code against your private book every tick. The fee is a price computed inside the TEE from the author's private Sharpe ratio — the only public trace of how they're doing.</p>
+      <a class="btn" href="https://gitlab.com/Bprime/blackbox#quickstart-local">Browse sealed strategies</a>
+    </div>
+    <figure><img src="./assets/back.png" alt="Sealed strategies ranked by blind price, with licence counts and public equity"></figure>
+  </div></section>
 
-  <h2>Blind licensing</h2>
-  <p class="lede">Back an author's sealed strategy with your own margin. The TEE runs their code against your private book every tick; you never see the code. The fee is a price the program computes inside the enclave from the author's private Sharpe ratio — the only public trace of their performance.</p>
-  <figure><img src="./assets/back.png" alt="Backing a sealed strategy, with blind prices per author">
-    <figcaption>Blind prices in bps, licence counts, and public equity. The code stays sealed.</figcaption></figure>
+  <section id="proof"><div class="wrap">
+    <h2>Verified, not asserted</h2>
+    <p class="section-sub">The same suite runs against MagicBlock's devnet TEE validator and the local stack, and the read-attack matrix runs live in the app.</p>
+    <div class="metrics">
+      <div class="metric"><div class="v">42/42</div><div class="k">checks on devnet</div></div>
+      <div class="metric"><div class="v">42/42</div><div class="k">the same suite locally</div></div>
+      <div class="metric"><div class="v">14/14</div><div class="k">read paths as designed</div></div>
+      <div class="metric"><div class="v">32/32</div><div class="k">primitive checks</div></div>
+    </div>
+    <figure style="margin-top:28px"><img src="./assets/proof.png" alt="The privacy proof page running its read matrix against a live entrant">
+      <figcaption>Every read path we know of: no token, a fresh wallet, a rival entrant, the upload transaction, the L1 copy, the delegation records.</figcaption></figure>
+    <p class="addr" style="margin-top:26px">Program <a href="https://explorer.solana.com/address/BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27?cluster=devnet">BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27</a> · integration proof: <a href="https://explorer.solana.com/tx/5b44mnJhjLrLgNoJBPxchTatrQ2RPeg23FC4RwR5TWvr19WaFAmY9K9BL4a2iZheDP5XE2tkQwAvHUEDF8JSaSo2?cluster=devnet">delegate_round</a></p>
+    <div class="chips" style="margin-top:22px">
+      <span>Private Ephemeral Rollup</span><span>Intel TDX</span><span>Native Crank</span><span>Pyth Lazer</span><span>Ephemeral SPL</span><span>VRF</span><span>ephemeral accounts</span>
+    </div>
+  </div></section>
 
-  <h2>Built on</h2>
-  <div>
-    <span class="pill">Private Ephemeral Rollup (Intel TDX)</span><span class="pill">ephemeral permissions</span>
-    <span class="pill">Native Crank</span><span class="pill">Pyth Lazer</span><span class="pill">Ephemeral SPL</span>
-    <span class="pill">VRF</span><span class="pill">ephemeral accounts</span><span class="pill">commit + undelegate</span>
-  </div>
-
-  <h2 id="limits">What we do not claim</h2>
-  <ul class="plain">
-    <li>Trust rests on Intel TDX and MagicBlock's TEE validator; clients check the attestation.</li>
-    <li>A licensee can infer the trades their own book makes. The logic stays sealed.</li>
-    <li>The author of a licensed strategy can read that licence's book.</li>
-    <li>USDC here is a test mint on devnet. Mainnet is not deployed.</li>
-    <li>The full list ships with the app and the repo, at <a href="https://gitlab.com/Bprime/blackbox/-/blob/main/docs/DISCLOSURES.md">docs/DISCLOSURES.md</a>.</li>
-  </ul>
-
-  <footer>
-    <a href="https://gitlab.com/Bprime/blackbox">Source</a> ·
-    <a href="https://gitlab.com/Bprime/blackbox/-/blob/main/docs/ARCHITECTURE.md">Architecture</a> ·
-    <a href="https://gitlab.com/Bprime/blackbox/-/blob/main/docs/DISCLOSURES.md">Disclosures</a> ·
-    <a href="./assets/blackbox-90s.mp4">Download the demo</a>
-    <div style="margin-top:10px">Built for MagicBlock's Solana Blitz v8.</div>
-  </footer>
+  <div class="cta-band"><div class="wrap">
+    <h2>Put a strategy in the box</h2>
+    <p class="section-sub" style="margin:0 auto 30px">Open the arena, write one in BXL, and watch it trade without anyone reading it.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="https://gitlab.com/Bprime/blackbox#quickstart-local">Open the app</a>
+      <a class="btn" href="https://gitlab.com/Bprime/blackbox">View the code</a>
+    </div>
+  </div></div>
 </main>
+
+<footer><div class="wrap">
+  <div class="links">
+    <a href="https://gitlab.com/Bprime/blackbox#quickstart-local">App</a>
+    <a href="https://gitlab.com/Bprime/blackbox">Source</a>
+    <a href="https://gitlab.com/Bprime/blackbox/-/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+    <a href="https://gitlab.com/Bprime/blackbox/-/blob/main/docs/DISCLOSURES.md">Disclosures</a>
+    <a href="https://explorer.solana.com/address/BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27?cluster=devnet">Explorer</a>
+    <a href="./assets/blackbox-90s.mp4">Download the demo</a>
+  </div>
+  <div>Running on Solana devnet with a test USDC mint. Built for MagicBlock's Solana Blitz v8.</div>
+</div></footer>
+
 </body>
 </html>

@@ -53,13 +53,30 @@ while :; do
     continue
   fi
 
+  # A round already running — because the machine came back, or the supervisor
+  # was restarted mid-round — is re-attached and settled rather than abandoned.
+  # Creating a competing round here would leave the old one ticking with nobody
+  # to close it.
+  resume=""
+  if [ -f ".mb/round-${CLUSTER}.json" ]; then
+    phase=$(python3 -c "import json;print(json.load(open('.mb/round-${CLUSTER}.json')).get('phase',''))" 2>/dev/null || echo "")
+    case "$phase" in
+      live|settling|delegating|registration) resume=1 ;;
+    esac
+  fi
+
   n=$((n + 1))
-  say "round ${n}: starting (admin holds ${bal} SOL)"
-  if pnpm exec ts-node --transpile-only scripts/run-round.ts >> "$LOG" 2>&1; then
+  if [ -n "$resume" ]; then
+    say "round ${n}: re-attaching to the round already in progress (phase ${phase})"
+  else
+    say "round ${n}: starting (admin holds ${bal} SOL)"
+  fi
+
+  if RESUME="$resume" pnpm exec ts-node --transpile-only scripts/run-round.ts >> "$LOG" 2>&1; then
     say "round ${n}: settled"
   else
     code=$?
-    say "round ${n}: run-round exited ${code} — the round may need closing by hand or from /arena"
+    say "round ${n}: run-round exited ${code} — see ${LOG}; a stranded round can also be closed from /arena"
   fi
   sleep "$GAP_SECS"
 done

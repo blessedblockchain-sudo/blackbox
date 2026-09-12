@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start -p 3100",
     "typecheck": "tsc --noEmit -p .",
-    "test": "ts-mocha -p ./test/tsconfig.json \"test/**/*.test.ts\""
+    "test": "ts-mocha -p ./test/tsconfig.json \"test/**/*.test.ts\"",
+    "build:static": "NEXT_PUBLIC_STATIC=1 next build",
+    "bake:round": "node scripts/bake-round.mjs"
   },
   "dependencies": {
     "@blackbox/sdk": "workspace:*",

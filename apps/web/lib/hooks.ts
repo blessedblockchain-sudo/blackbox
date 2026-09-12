@@ -6,6 +6,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Connection, PublicKey } from "@solana/web3.js";
 import type { PublicRoundInfo } from "./api-types";
+import { initialRoundInfo, loadRoundInfo } from "./client-api";
+import { STATIC } from "./config";
 import {
   chatPda,
   decodeAccount,
@@ -28,16 +30,16 @@ import { HistoryStore, parseHistoryResponse, normalizeIndexerSample, type Sample
 // ------------------------------------------------------------------ round info
 
 export function useRoundInfo(refreshMs = 5000) {
-  const [info, setInfo] = useState<PublicRoundInfo | null>(null);
+  // Static builds know the round at build time, so the first render already has
+  // it; the effect below only replaces it if a newer round is found on chain.
+  const [info, setInfo] = useState<PublicRoundInfo | null>(initialRoundInfo);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
       try {
-        const res = await fetch("/api/round", { cache: "no-store" });
-        if (!res.ok) throw new Error(`/api/round ${res.status}`);
-        const next = (await res.json()) as PublicRoundInfo;
+        const next = await loadRoundInfo();
         if (!stop) {
           // keep identity stable when nothing changed, so effects keyed on it do not restart
           setInfo((prev) => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
@@ -46,7 +48,8 @@ export function useRoundInfo(refreshMs = 5000) {
       } catch (e) {
         if (!stop) setError(e instanceof Error ? e.message : String(e));
       }
-      if (!stop) timer = setTimeout(load, refreshMs);
+      // Nothing on a static site changes the round info after the first load.
+      if (!stop && !STATIC) timer = setTimeout(load, refreshMs);
     };
     load();
     return () => {

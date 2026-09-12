@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { parseDisclosures, type Inline } from "../../lib/disclosures";
+import { Shell } from "../../components/shell";
 
 export const metadata: Metadata = { title: "Disclosures" };
 
@@ -61,16 +62,18 @@ export default function DisclosuresPage() {
   const md = loadMarkdown();
   if (!md) {
     return (
-      <section className="border border-edge bg-surface px-4 py-10">
-        <p className="label-caps !text-warn">Disclosures unavailable</p>
-        <p className="mt-2 text-sm text-fg-muted">docs/DISCLOSURES.md was not found when this page was built.</p>
-      </section>
+      <Shell>
+        <section className="border border-edge bg-surface px-4 py-10">
+          <p className="label-caps !text-warn">Disclosures unavailable</p>
+          <p className="mt-2 text-sm text-fg-muted">docs/DISCLOSURES.md was not found when this page was built.</p>
+        </section>
+      </Shell>
     );
   }
   const doc = parseDisclosures(md);
   const count = doc.sections.reduce((a, s) => a + s.items.length, 0);
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <Shell className="grid grid-cols-1 gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
       <nav aria-label="Sections" className="lg:sticky lg:top-16 lg:self-start">
         <div className="border border-edge bg-surface">
           <div className="border-b border-edge px-3 py-2 label-caps !text-fg-muted">Contents</div>
@@ -138,6 +141,6 @@ export default function DisclosuresPage() {
           </section>
         ))}
       </article>
-    </div>
+    </Shell>
   );
 }

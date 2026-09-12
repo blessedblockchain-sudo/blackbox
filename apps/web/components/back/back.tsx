@@ -5,6 +5,7 @@ import { MotionConfig } from "framer-motion";
 import type { BackerLicense, PublicRoundInfo } from "../../lib/api-types";
 import type { EntrantView, RoundView, ScoreboardView } from "../../lib/chain";
 import { useLiveRound, useRoundInfo } from "../../lib/hooks";
+import { noRoundDetail, roundInfoError } from "../../lib/messages";
 import { formatBps, formatInt, returnPct, shortAddr } from "../../lib/format";
 import { Panel, PanelHeader, Skeleton } from "../ui";
 import { phaseLabel } from "../arena/round-header";
@@ -107,7 +108,7 @@ export function Back() {
 
   if (!info) {
     return infoError ? (
-      <Problem title="Round info unavailable" detail={`GET /api/round failed: ${infoError}. Retrying every 5 s.`} />
+      <Problem title="Round info unavailable" detail={roundInfoError(infoError)} />
     ) : (
       <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading">
         <Skeleton className="h-[112px] w-full" />
@@ -120,10 +121,7 @@ export function Back() {
   }
   if (info.source === "none" || !info.round) {
     return (
-      <Problem
-        title="No round configured"
-        detail={info.cluster === "local" ? "No .mb/round-local.json found. Start a round with scripts/run-round.ts; this page picks it up within 5 s." : "Set NEXT_PUBLIC_ROUND and NEXT_PUBLIC_CLUSTER=devnet."}
-      />
+      <Problem title="No round configured" detail={noRoundDetail(info.cluster)} />
     );
   }
 

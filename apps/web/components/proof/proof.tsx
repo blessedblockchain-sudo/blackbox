@@ -5,9 +5,13 @@ import clsx from "clsx";
 import { MotionConfig, motion } from "framer-motion";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
 import type { ProofAccess, ProofResponse } from "../../lib/api-types";
+import { runProof } from "../../lib/client-api";
+import { STATIC } from "../../lib/config";
 import { useLiveRound, useNow, useRoundInfo } from "../../lib/hooks";
 import { formatDuration, formatInt, formatMs, shortAddr } from "../../lib/format";
 import { Badge, Button, Panel, PanelHeader, Skeleton } from "../ui";
+import { WalletPicker } from "../studio/identity";
+import type { Identity } from "../studio/use-owner";
 
 const ACCESS: Record<ProofAccess, { tone: "gain" | "loss" | "dim" | "warn"; text: string; title: string }> = {
   read: { tone: "gain", text: "read", title: "The path returned the account's bytes." },
@@ -18,7 +22,8 @@ const ACCESS: Record<ProofAccess, { tone: "gain" | "loss" | "dim" | "warn"; text
 
 type RunState = { status: "idle" } | { status: "running"; startedAt: number; target: string } | { status: "done"; data: ProofResponse } | { status: "error"; error: string; target: string };
 
-function Explainer() {
+function Explainer({ status }: { status: string | null }) {
+  const over = status === "settled" || status === "settling";
   return (
     <header className="border border-edge bg-surface px-4 py-3">
       <h1 className="font-mono text-lg font-medium tracking-tight">Privacy proof</h1>
@@ -34,6 +39,14 @@ function Explainer() {
           Disclosures 4 to 6
         </Link>
       </p>
+      {over ? (
+        <p className="mt-2 max-w-[92ch] border-l-2 border-warn/50 pl-3 text-xs leading-5 text-fg-muted">
+          <span className="text-warn">This round has settled.</span> settle_entrant already zeroed every private body and closed its permission, and undelegate_entrant committed the zeros to Solana — so
+          the Strategy and Position accounts are public again and read as all zeros. Most rows below check exactly that. One does not: closing the permission also ends the TX_MESSAGE redaction, so the
+          old set_strategy transaction that carried the bytecode becomes readable in rollup history. That row is red here, and it is a real result, not a display artefact — the seal is a property of the
+          round, not of eternity. Run the matrix while a round is live to see the filter refusing every read.
+        </p>
+      ) : null}
     </header>
   );
 }
@@ -43,6 +56,7 @@ export function Proof() {
   const live = useLiveRound(info, 1500);
   const [target, setTarget] = useState("");
   const [run, setRun] = useState<RunState>({ status: "idle" });
+  const [identity, setIdentity] = useState<Identity | null>(null);
   const autoRan = useRef(false);
   const now = useNow(500);
 
@@ -53,14 +67,28 @@ export function Proof() {
     return owners.map((o) => ({ owner: o, name: names.get(o)?.name || shortAddr(o), canActAs: !!names.get(o)?.canActAs }));
   }, [info, live.scoreboard]);
 
+  // The signed-in wallet, if any: it runs the owner control rows when it is the
+  // target, and stands in as the rival token otherwise.
+  const walletId = identity?.kind === "wallet" && identity.token ? identity : null;
+  const wallet = useMemo(
+    () =>
+      walletId
+        ? {
+            owner: walletId.owner,
+            token: walletId.token!,
+            isEntrant: entrants.some((e) => e.owner === walletId.owner),
+            name: entrants.find((e) => e.owner === walletId.owner)?.name ?? shortAddr(walletId.owner),
+          }
+        : null,
+    [walletId, entrants],
+  );
+
   const go = async (owner: string) => {
-    if (!owner) return;
+    if (!owner || !info) return;
     setRun({ status: "running", startedAt: Date.now(), target: owner });
     try {
-      const res = await fetch("/api/proof", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner }) });
-      const body = (await res.json()) as ProofResponse | { error: string };
-      if (!res.ok || "error" in body) throw new Error("error" in body ? body.error : `HTTP ${res.status}`);
-      setRun({ status: "done", data: body });
+      const targetName = entrants.find((e) => e.owner === owner)?.name ?? shortAddr(owner);
+      setRun({ status: "done", data: await runProof({ info, target: owner, targetName, wallet }) });
     } catch (e) {
       setRun({ status: "error", error: e instanceof Error ? e.message : String(e), target: owner });
     }
@@ -97,7 +125,7 @@ export function Proof() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="flex flex-col gap-3">
-        <Explainer />
+        <Explainer status={live.round?.status ?? null} />
         <Panel aria-label="Attack matrix">
           <PanelHeader title={`Round ${info.roundId ?? "--"} · ${info.cluster}`} meta={live.round ? `${live.round.status} · tick ${formatInt(live.round.tick)}` : undefined} />
           <form
@@ -130,9 +158,28 @@ export function Proof() {
             <p className="max-w-[60ch] text-xs text-fg-dim">
               {info.localRoutes && chosen?.canActAs
                 ? `The local server holds ${chosen.name}'s key for this demo round, so the owner control rows run too: they must read, every other path must come back empty.`
-                : "The server has no key for this entrant, so the owner control rows are skipped; every row that runs must come back empty."}
+                : wallet && chosen && wallet.owner === chosen.owner
+                  ? "Your wallet is this entrant, so the owner control rows run too: they must read, every other path must come back empty."
+                  : wallet
+                    ? `Signed in as ${shortAddr(wallet.owner)}${wallet.isEntrant ? ", an entrant of this round, so it supplies the rival-token rows" : ", which is not an entrant of this round, so its rows say so"}. The owner control rows are skipped: only ${chosen?.name ?? "the target"} can run them.`
+                    : `${STATIC ? "This page runs the matrix in your browser with keys generated in this tab." : "The server has no key for this entrant."} The owner control rows are skipped; every row that runs must come back empty.`}
             </p>
           </form>
+
+          {info.localRoutes ? null : (
+            <details className="border-b border-edge">
+              <summary className="flex min-h-9 cursor-pointer items-center px-3 label-caps hover:text-fg-muted">
+                Optional: sign in with a wallet {wallet ? `· ${shortAddr(wallet.owner)}` : "· owner control rows are skipped"}
+              </summary>
+              <div className="border-t border-edge px-3 py-3">
+                <p className="mb-3 max-w-[80ch] text-xs text-fg-dim">
+                  The matrix needs no wallet: the no-token, fresh-token and second-wallet rows run with keypairs this page generates. A wallet adds two things. If it is the target entrant, the owner
+                  control rows run and must read. If it is a different entrant, its token becomes the rival token. Signing the TEE login challenge costs nothing and moves no funds.
+                </p>
+                <WalletPicker info={info} identity={identity} onChange={setIdentity} />
+              </div>
+            </details>
+          )}
 
           {running ? (
             <div className="space-y-2 p-3" aria-busy="true" aria-live="polite">

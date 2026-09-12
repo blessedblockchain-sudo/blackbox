@@ -21,9 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         <SiteNav />
-        <main id="main" className="mx-auto max-w-[1440px] px-4 pt-4 pb-16 sm:px-6">
-          {children}
-        </main>
+        <main id="main">{children}</main>
       </body>
     </html>
   );

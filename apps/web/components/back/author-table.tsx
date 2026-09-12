@@ -31,8 +31,10 @@ export interface AuthorRow {
 export function rowBlock(row: AuthorRow, gate: string | null): string | null {
   if (gate) return gate;
   if (row.feePriceBps === null) return "Reading the author's public Entrant account.";
+  // settle_entrant clears `alive` for everyone, so "not alive" only means
+  // liquidated while the entrant is still unsettled.
+  if (row.settled) return "This entrant is settled: its book is closed and its strategy hash is published.";
   if (row.alive === false) return "Liquidated: there is nothing left to run.";
-  if (row.settled) return "This entrant is settled.";
   if ((row.licenseCount ?? 0) >= MAX_LICENSES_PER_AUTHOR) return `All ${MAX_LICENSES_PER_AUTHOR} licenses on this strategy are taken.`;
   if (row.youBack) return "The web backer already backs this strategy in this round.";
   return null;
@@ -101,7 +103,7 @@ export function AuthorTable({
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ layout: { type: "spring", stiffness: 420, damping: 42 }, opacity: { duration: 0.25, delay: Math.min(i, 12) * 0.03 }, y: { duration: 0.25, delay: Math.min(i, 12) * 0.03 } }}
-                className={clsx("border-t border-edge transition-colors duration-150", active ? "bg-surface-2" : "hover:bg-surface-2/50", r.alive === false && "opacity-60")}
+                className={clsx("border-t border-edge transition-colors duration-150", active ? "bg-surface-2" : "hover:bg-surface-2/50", (r.settled || r.alive === false) && "opacity-60")}
               >
                 <td className="num hidden px-3 py-2 text-fg-dim sm:table-cell">{i + 1}</td>
                 <td className="px-2 py-2 sm:px-3">
@@ -110,7 +112,11 @@ export function AuthorTable({
                     <span className="truncate font-mono text-[13px] text-fg">{r.name}</span>
                     {r.bot ? <span className="label-caps !text-[10px]">bot</span> : null}
                     {r.external ? <Badge tone="dim">agent</Badge> : null}
-                    {r.alive === false ? <span className="font-mono text-[10px] tracking-[0.08em] text-loss uppercase">liquidated</span> : null}
+                    {r.settled ? (
+                      <span className="font-mono text-[10px] tracking-[0.08em] text-fg-dim uppercase">settled</span>
+                    ) : r.alive === false ? (
+                      <span className="font-mono text-[10px] tracking-[0.08em] text-loss uppercase">liquidated</span>
+                    ) : null}
                   </div>
                   <div className="num mt-0.5 text-[11px] text-fg-faint">
                     {shortAddr(r.owner)}

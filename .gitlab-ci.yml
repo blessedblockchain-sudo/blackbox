@@ -1,12 +1,58 @@
-# GitLab Pages: publishes site/ as the project website.
+# GitLab Pages: builds apps/web as a static export and publishes it.
+#
 # URL: https://bprime.gitlab.io/blackbox/  (Pages must be enabled; a private
 # project serves it to members only until the project is public).
+#
+# The exported site has no server. Everything the app shows it reads from the
+# browser: Solana devnet for L1 and the Hall of Fame, MagicBlock's TEE RPC for
+# the live round, and the round baked into apps/web/lib/generated/round.json at
+# commit time (regenerate with `pnpm --filter @blackbox/web bake:round`).
+#
+# NEXT_PUBLIC_BASE_PATH must match the sub-path Pages serves the site under, and
+# is inlined into the client bundle, so it is derived from CI_PAGES_URL here.
+
+stages:
+  - deploy
+
 pages:
   stage: deploy
-  image: alpine:latest
+  image: node:22-bookworm-slim
+  interruptible: true
+  variables:
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    NEXT_TELEMETRY_DISABLED: "1"
+    NEXT_PUBLIC_STATIC: "1"
+    NEXT_PUBLIC_CLUSTER: "devnet"
+    # Defaults from packages/sdk/src/constants.ts (ENDPOINTS.devnet); override
+    # here to point the published site at different RPCs.
+    NEXT_PUBLIC_BASE_RPC: "https://api.devnet.solana.com"
+    NEXT_PUBLIC_TEE_RPC: "https://devnet-tee.magicblock.app"
+    PNPM_STORE: "$CI_PROJECT_DIR/.pnpm-store"
+  cache:
+    # One warm pnpm store per lockfile: installs after the first run are a copy,
+    # not a download, which is what keeps this inside the free CI minutes.
+    key:
+      prefix: pnpm
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@10.20.0 --activate
+    - pnpm config set store-dir "$PNPM_STORE"
   script:
-    - mkdir -p public
-    - cp -r site/. public/
+    # "https://bprime.gitlab.io/blackbox" -> "/blackbox"; a user/group Pages
+    # site serves from the root and leaves this empty.
+    - export NEXT_PUBLIC_BASE_PATH="$(printf '%s' "${CI_PAGES_URL:-}" | sed -E 's#^https?://[^/]+##; s#/+$##')"
+    - echo "Pages URL ${CI_PAGES_URL:-unset}, base path '${NEXT_PUBLIC_BASE_PATH}'"
+    # Only the web app and the workspace packages it imports: the video app and
+    # the indexer are not part of the site.
+    - pnpm install --frozen-lockfile --filter "@blackbox/web..."
+    - pnpm --filter @blackbox/web build
+    - rm -rf public
+    - mv apps/web/out public
+    - ls -la public
   artifacts:
     paths:
       - public

@@ -14,7 +14,8 @@ export interface PublicEntrant {
 
 export interface PublicRoundInfo {
   cluster: Cluster;
-  source: "file" | "env" | "none";
+  /** Where the round address came from: a round file, build-time env, a chain probe, or nowhere. */
+  source: "file" | "env" | "chain" | "none";
   roundId: number | null;
   round: string | null;
   mint: string | null;

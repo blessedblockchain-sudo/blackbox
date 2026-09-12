@@ -17,6 +17,8 @@ export interface TileData {
   returnPct: number | null;
   trades: number | null;
   alive: boolean | null;
+  /** settle_entrant has run: `alive` is false for everyone then, liquidated or not. */
+  settled: boolean;
   strategyVersion: number | null;
   strategyHash: string;
   /** Public Entrant fields: blind license price (bps) and active license count. */
@@ -40,7 +42,9 @@ export function BlackboxTile({ t, sealed }: { t: TileData; sealed: boolean }) {
     prev.current = t.equity;
   }, [t.equity]);
 
-  const liquidated = t.alive === false;
+  // After settlement the program clears `alive` for every entrant, so it no
+  // longer means "liquidated" — say settled instead of inventing a blow-up.
+  const liquidated = t.alive === false && !t.settled;
   const ret = t.returnPct;
   const retTone = ret === null || !Number.isFinite(ret) || ret === 0 ? "text-fg-dim" : ret > 0 ? "text-gain" : "text-loss";
   const sealedFacts = [
@@ -49,7 +53,7 @@ export function BlackboxTile({ t, sealed }: { t: TileData; sealed: boolean }) {
     t.strategyHash ? `sha256 ${t.strategyHash.slice(0, 8)}… published` : `${formatInt(CODE_REGION)}-byte code region hidden`,
   ];
   const blind = t.feePriceBps === null ? null : `blind price ${formatBps(t.feePriceBps, { decimals: 0 })}, ${plural(t.licenseCount, "license")}`;
-  const label = `${t.name}, ${sealed ? "equity sealed" : `equity ${formatUsd(t.equity)}, return ${formatPercent(ret, { signed: true })}, ${plural(t.trades, "trade")}`}${liquidated ? ", liquidated" : ""}${blind ? `, ${blind}` : ""}. ${sealedFacts.join(", ")}.`;
+  const label = `${t.name}, ${sealed ? "equity sealed" : `equity ${formatUsd(t.equity)}, return ${formatPercent(ret, { signed: true })}, ${plural(t.trades, "trade")}`}${liquidated ? ", liquidated" : t.settled ? ", settled" : ""}${blind ? `, ${blind}` : ""}. ${sealedFacts.join(", ")}.`;
 
   return (
     <article
@@ -109,6 +113,10 @@ export function BlackboxTile({ t, sealed }: { t: TileData; sealed: boolean }) {
         <span className="num text-fg-muted">{sealed ? "-- trades" : plural(t.trades, "trade")}</span>
         {t.alive === null ? null : liquidated ? (
           <span className="font-mono text-[11px] tracking-[0.08em] text-loss uppercase">Liquidated</span>
+        ) : t.settled ? (
+          <span className="font-mono text-[11px] tracking-[0.08em] text-fg-dim uppercase" title="settle_entrant closed this book at the final marks and published its strategy hash">
+            Settled
+          </span>
         ) : (
           <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.08em] text-fg-dim uppercase">
             <span aria-hidden className="size-1.5 rounded-full bg-gain" />

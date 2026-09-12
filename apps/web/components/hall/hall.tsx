@@ -1,8 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { MotionConfig, motion } from "framer-motion";
 import type { HallResponse, HallRow } from "../../lib/api-types";
+import { loadHall } from "../../lib/client-api";
+import type { NameMap } from "../../lib/hall";
+import { useRoundInfo } from "../../lib/hooks";
 import { baseAddressExplorer } from "../../lib/explorer";
 import { formatInt, formatUsd, shortAddr } from "../../lib/format";
 import { Button, ExtLink, Panel, PanelHeader, Skeleton } from "../ui";
@@ -52,19 +55,33 @@ function Row({ r, i, data }: { r: HallRow; i: number; data: HallResponse }) {
 }
 
 export function Hall() {
+  const { info } = useRoundInfo();
   const [data, setData] = useState<HallResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
 
+  // Names for the wallets the current round knows about; every other Hall row
+  // shows its address. (In server mode the route also remembers older rounds.)
+  const cluster = info?.cluster ?? null;
+  const base = info?.endpoints.base ?? null;
+  const namesKey = info ? info.entrants.map((e) => `${e.owner}:${e.name}:${e.bot ? 1 : 0}`).join(",") : "";
+  const names = useMemo<NameMap>(() => {
+    const m: NameMap = new Map();
+    for (const part of namesKey ? namesKey.split(",") : []) {
+      const [owner, name, bot] = part.split(":");
+      if (owner && name) m.set(owner, { name, bot: bot === "1" });
+    }
+    return m;
+  }, [namesKey]);
+
   useEffect(() => {
+    if (!cluster || !base) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
       try {
-        const res = await fetch("/api/hall", { cache: "no-store" });
-        const body = (await res.json()) as HallResponse | { error: string };
-        if (!res.ok || "error" in body) throw new Error("error" in body ? body.error : `HTTP ${res.status}`);
+        const body = await loadHall(cluster, base, names);
         if (!stop) {
           setData(body);
           setError(null);
@@ -82,7 +99,7 @@ export function Hall() {
       stop = true;
       clearTimeout(timer);
     };
-  }, [nonce]);
+  }, [nonce, cluster, base, names]);
 
   return (
     <MotionConfig reducedMotion="user">

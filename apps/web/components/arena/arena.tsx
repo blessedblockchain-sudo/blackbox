@@ -3,7 +3,8 @@ import { useMemo } from "react";
 import { useHistory, useLiveRound, useRoundInfo } from "../../lib/hooks";
 import { returnPct, shortAddr, formatInt } from "../../lib/format";
 import { solvency } from "../../lib/solvency";
-import { PROGRAM_ID } from "../../lib/chain";
+import { PROGRAM_ID, type RoundView } from "../../lib/chain";
+import { noRoundDetail, roundInfoError } from "../../lib/messages";
 import { baseAddressExplorer, erAddressExplorer } from "../../lib/explorer";
 import type { PublicRoundInfo } from "../../lib/api-types";
 import { RoundHeader } from "./round-header";
@@ -39,6 +40,7 @@ export function Arena() {
         returnPct: e && deposited ? returnPct(e.equity, deposited) : null,
         trades: e ? e.trades : null,
         alive: e ? e.alive : ent ? ent.alive : null,
+        settled: !!ent?.settled,
         strategyVersion: ent?.strategyVersion ?? null,
         strategyHash: ent?.strategyHash ?? "",
         feePriceBps: ent ? ent.feePriceBps : null,
@@ -69,19 +71,8 @@ export function Arena() {
     return solvency({ deposits, vaultBalance: r?.vaultBalance ?? NaN, totalEquity: r?.totalEquity ?? NaN, pot: r?.pot ?? NaN });
   }, [live.round, live.scoreboard, live.entrants]);
 
-  if (!info) return infoError ? <Problem title="Round info unavailable" detail={`GET /api/round failed: ${infoError}. Retrying every 5 s.`} /> : <ArenaSkeleton />;
-  if (info.source === "none" || !info.round) {
-    return (
-      <Problem
-        title="No round configured"
-        detail={
-          info.cluster === "local"
-            ? "No .mb/round-local.json found. Start a round with scripts/run-round.ts; this page picks it up within 5 s."
-            : "Set NEXT_PUBLIC_ROUND (round address) and NEXT_PUBLIC_CLUSTER=devnet."
-        }
-      />
-    );
-  }
+  if (!info) return infoError ? <Problem title="Round info unavailable" detail={roundInfoError(infoError)} /> : <ArenaSkeleton />;
+  if (info.source === "none" || !info.round) return <Problem title="No round configured" detail={noRoundDetail(info.cluster)} />;
   if (!live.round) {
     if (live.status === "error" || live.status === "missing")
       return <Problem title="Cannot read the round from the TEE" detail={`${live.error ?? "no data"}. Polling ${info.endpoints.tee} every 700 ms.`} />;
@@ -91,6 +82,7 @@ export function Arena() {
   const sealed = live.scoreboardSealed || live.round.mode === "dark";
   return (
     <div className="flex flex-col gap-3">
+      <RoundState info={info} round={live.round} />
       <RoundHeader info={info} round={live.round} solvency={beacon} latencyMs={live.latencyMs} status={live.status} />
       <MarketStrip names={info.markets} markets={live.markets} mystery={live.round.vrfReady ? live.round.mysteryMarket : null} />
       <Panel>
@@ -109,6 +101,31 @@ export function Arena() {
       <RoundChat info={info} round={live.round} />
       <ArenaFooter info={info} />
     </div>
+  );
+}
+
+/**
+ * What the visitor is looking at when it is not a live round. A settled round
+ * is the normal resting state between runs: say so, and keep showing it rather
+ * than an empty page.
+ */
+function RoundState({ info, round }: { info: PublicRoundInfo; round: RoundView }) {
+  if (round.status === "live") return null;
+  const id = String(round.id).padStart(2, "0");
+  const ended = round.endedAt ? new Date(round.endedAt * 1000).toLocaleString("en-US", { hour12: false, timeZone: "UTC" }) : null;
+  const text =
+    round.status === "settled"
+      ? `No round is running on ${info.cluster} right now. This is round ${id} as it finished${ended ? ` (${ended} UTC)` : ""}: final equities, the published sha256 of each strategy, and what the books settled at. A new round appears here on its own once one is created.`
+      : round.status === "settling"
+        ? `Round ${id} is settling: books are closing at the final marks, licences pay their accrued fees, and private state is scrubbed before it commits to Solana.`
+        : round.status === "open"
+          ? `Round ${id} is open for registration. Entrants join, seal and fund their strategies; trading starts when the round goes live.`
+          : `Round ${id} has been created but is not open yet.`;
+  return (
+    <Panel className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
+      <span className="label-caps !text-warn">{round.status === "settled" ? "Between rounds" : round.status}</span>
+      <p className="min-w-0 flex-1 text-xs text-fg-muted">{text}</p>
+    </Panel>
   );
 }
 

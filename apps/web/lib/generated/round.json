@@ -1,0 +1,100 @@
+{
+  "cluster": "devnet",
+  "roundId": 2,
+  "round": "3x5BZba4Bu23sapVfcEVQoCeeGQS9sH3vUVhn3cQD8Ky",
+  "mint": "9D8FWf2m4VqiPxbLCRgrpc929UBKoV52mjqnaXTMVy4E",
+  "feeds": [
+    "ENYwebBThHzmzwPLAQvCucUTsjyfBSZdD9ViXksS4jPu",
+    "71wtTRDY8Gxgw56bXFt2oc6qeAbTxzStdNiC425Z51sr",
+    "5vaYr1hpv8yrSpu8w3K95x22byYxUJCCNCSYJtqVWPvG"
+  ],
+  "markets": [
+    "SOL-PERP",
+    "BTC-PERP",
+    "ETH-PERP"
+  ],
+  "tickMs": 500,
+  "durationTicks": 3600,
+  "mode": "lit",
+  "phase": "settled",
+  "registrationEndsAt": 1789165686797,
+  "startedAt": 1789165830876,
+  "updatedAt": 1789167678377,
+  "entrants": [
+    {
+      "name": "Momentum",
+      "owner": "f66QuWdqbfrvi7BPhNFWVAEDkj5D7NuAF8yNNtntyMY",
+      "bot": true,
+      "external": false
+    },
+    {
+      "name": "Reverter",
+      "owner": "4AF1nBRU3YVADn7Fsn6vnJfJXhZSbe1QSZP7g59b87CP",
+      "bot": true,
+      "external": false
+    },
+    {
+      "name": "Breakout",
+      "owner": "J8LMZrjxHWvxGec1WRsbgpFS2yxw2gkaCAM5JrqBrx8h",
+      "bot": true,
+      "external": false
+    },
+    {
+      "name": "Coinflip",
+      "owner": "4crwNnzM7DtPSdg7b1opNiuo6APF7FEfa6ihQYG1h1HJ",
+      "bot": true,
+      "external": false
+    },
+    {
+      "name": "HODL",
+      "owner": "Djrag8peeWsoJqRGsW4qQU9jFdmt6k7oD5GkBAEoaE5R",
+      "bot": true,
+      "external": false
+    },
+    {
+      "name": "Degen",
+      "owner": "EqEfYrfYWUkuLgQhVT7h6AoACM8iqXCJ8vzZyGZCY9DF",
+      "bot": true,
+      "external": false
+    },
+    {
+      "name": "PairsBot",
+      "owner": "2yoeG2FEBmSKC7hMWeijPbSJCHoTmaUVvvUKjW8maDzG",
+      "bot": true,
+      "external": false
+    },
+    {
+      "name": "EthTrend",
+      "owner": "DoAX9hsHYFvm6AH2G2FKEjrJu1ftGDjTgZAdNkpUBrYX",
+      "bot": true,
+      "external": false
+    }
+  ],
+  "entrantOwners": [
+    "f66QuWdqbfrvi7BPhNFWVAEDkj5D7NuAF8yNNtntyMY",
+    "4AF1nBRU3YVADn7Fsn6vnJfJXhZSbe1QSZP7g59b87CP",
+    "J8LMZrjxHWvxGec1WRsbgpFS2yxw2gkaCAM5JrqBrx8h",
+    "4crwNnzM7DtPSdg7b1opNiuo6APF7FEfa6ihQYG1h1HJ",
+    "Djrag8peeWsoJqRGsW4qQU9jFdmt6k7oD5GkBAEoaE5R",
+    "EqEfYrfYWUkuLgQhVT7h6AoACM8iqXCJ8vzZyGZCY9DF",
+    "2yoeG2FEBmSKC7hMWeijPbSJCHoTmaUVvvUKjW8maDzG",
+    "DoAX9hsHYFvm6AH2G2FKEjrJu1ftGDjTgZAdNkpUBrYX"
+  ],
+  "backers": [
+    {
+      "name": "Copycat",
+      "owner": "9kK4CEhAbX1w1qArbBiMFQyTLrLrKoU9jYpowfheyH8a"
+    }
+  ],
+  "licenses": [
+    {
+      "name": "Copycat",
+      "buyer": "9kK4CEhAbX1w1qArbBiMFQyTLrLrKoU9jYpowfheyH8a",
+      "author": "Djrag8peeWsoJqRGsW4qQU9jFdmt6k7oD5GkBAEoaE5R",
+      "bot": true,
+      "scheduled": true,
+      "source": null
+    }
+  ],
+  "bakedAt": 1789173735304
+}

@@ -111,7 +111,9 @@ export function RoundChat({ info, round }: { info: PublicRoundInfo; round: Round
         <p className="px-3 py-4 text-xs text-fg-dim">
           {chat.error
             ? `Cannot read the chat: ${chat.error}`
-            : "No messages yet. The chat lives in an ephemeral account on the rollup: the first post creates it, and the round closes it before it commits to Solana."}
+            : round.status === "settled" || round.status === "settling"
+              ? "This round's chat is gone. It lived in an ephemeral account on the rollup, and close_chat refunded its rent to the round before the round committed to Solana — it never existed on L1."
+              : "No messages yet. The chat lives in an ephemeral account on the rollup: the first post creates it, and the round closes it before it commits to Solana."}
         </p>
       )}
       {canPost ? (

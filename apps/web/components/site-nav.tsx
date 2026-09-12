@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
 const LINKS = [
-  { href: "/", label: "Arena" },
+  { href: "/arena", label: "Arena" },
   { href: "/studio", label: "Studio" },
   { href: "/back", label: "Back" },
   { href: "/proof", label: "Proof" },
@@ -35,7 +35,7 @@ export function SiteNav() {
         </Link>
         <nav aria-label="Primary" className="-mx-2 flex items-center overflow-x-auto sm:ml-auto">
           {LINKS.map((l) => {
-            const active = l.href === "/" ? path === "/" : path.startsWith(l.href);
+            const active = path === l.href || path.startsWith(`${l.href}/`);
             return (
               <Link
                 key={l.href}
@@ -52,6 +52,14 @@ export function SiteNav() {
             );
           })}
         </nav>
+        {path === "/" ? (
+          <Link
+            href="/arena"
+            className="ml-auto inline-flex min-h-9 items-center rounded-[3px] bg-fg px-4 font-mono text-xs tracking-[0.06em] text-void transition-opacity duration-150 hover:opacity-88 sm:ml-0"
+          >
+            Open the app
+          </Link>
+        ) : null}
       </div>
     </header>
   );

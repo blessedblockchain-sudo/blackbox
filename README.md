@@ -146,7 +146,7 @@ flowchart LR
 | `packages/compiler` (`@blackbox/compiler`) | BXL, the strategy language: `compile`, `simulate`, `formatListing`, `EXAMPLES`. | Working (86/86) |
 | `packages/mcp-server` | MCP server that lets an AI agent join a round, write BXL, hot-swap, back another entrant's sealed strategy, read its own private state and use the round chat. | Working (21 passing, 11 pending) |
 | `packages/agents` | LLM trader runner (Claude, OpenAI, Gemini, plus a scripted agent) over the MCP server. Each loop may hold, hot-swap, or back another strategy. | Working (32/32) |
-| `apps/web` | Next.js 16 app on port 3100: Arena, Studio, Back (blind licensing), Proof, Hall, Disclosures. | Working on local (50 tests, typecheck and production build clean); the devnet wallet flow is untested |
+| `apps/web` | Next.js 16 app on port 3100: the product page, Arena, Studio, Back (blind licensing), Proof, Hall, Disclosures. Also builds as a static export (`build:static`) that reads devnet straight from the browser, which is what `.gitlab-ci.yml` publishes to GitLab Pages. | Working on local (50 tests, typecheck and both builds clean); the devnet wallet flow is untested |
 | `apps/attacker` | `bx-attack`: runs the read-attack matrix against a live entrant. | Working (12/12 against a live local round) |
 | `services/indexer` | Polls public round state, serves history and SSE on port 8787. | Working (8/8) |
 | `programs/spike` | Phase 0 throwaway program behind the 32/32 devnet-tee verification. | Done |
@@ -200,7 +200,7 @@ Or run the full-round e2e test on its own round (about a minute for the default 
 DURATION_TICKS=90 pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/blackbox.e2e.ts
 ```
 
-**3. Open the web app.** Arena (`/`), Studio (`/studio`), Back (`/back`), Proof (`/proof`), Hall (`/hall`), Disclosures (`/disclosures`).
+**3. Open the web app.** Product page (`/`), Arena (`/arena`), Studio (`/studio`), Back (`/back`), Proof (`/proof`), Hall (`/hall`), Disclosures (`/disclosures`).
 
 ```bash
 CLUSTER=local pnpm exec ts-node --transpile-only services/indexer/src/index.ts   # equity history, port 8787
@@ -208,6 +208,20 @@ pnpm --filter @blackbox/web dev                                                 
 ```
 
 Stop the dev server before running `next build` (Turbopack holds the build directory).
+
+The same tree also builds as a **static site** with no server, which is what GitLab Pages serves:
+
+```bash
+pnpm --filter @blackbox/web bake:round                 # .mb/round-devnet.json -> lib/generated/round.json (public fields only)
+NEXT_PUBLIC_CLUSTER=devnet NEXT_PUBLIC_BASE_PATH=/blackbox \
+  pnpm --filter @blackbox/web build:static             # -> apps/web/out
+```
+
+In that mode `app/api/**` is dropped from the build (`pageExtensions` in `next.config.ts`) and the
+browser does those reads itself: the round from the baked file plus a Round-PDA probe on L1, the Hall
+with `program.account.hall.all()`, and the privacy matrix with ephemeral keypairs against the TEE
+(`lib/proof-matrix.ts`). Anything that needs the local server — acting as a bot, posting to the round
+chat, the server-held backer — is hidden or disabled rather than left as a button that fails.
 
 **4. Run the attacker.** It tries every read path against one entrant's Strategy and Position and exits non-zero if anything leaks.
 

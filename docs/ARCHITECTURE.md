@@ -1,6 +1,6 @@
 # BLACKBOX architecture
 
-This document describes `programs/blackbox` and `crates/bxvm` as they stand on 2026-09-11: the build deployed on devnet (`BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27`) and exercised there by the 42/42 end-to-end run, and the same source the local stack runs with the `local-oracle` feature. Everything here was read from that source; items that are designed but not implemented are listed at the end under [Not implemented](#not-implemented).
+This document describes `programs/blackbox` and `crates/bxvm` as they stand on 2026-09-12: the build deployed on devnet (`BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27`) and exercised there by the 42/42 end-to-end run, and the same source the local stack runs with the `local-oracle` feature. Everything here was read from that source; items that are designed but not implemented are listed at the end under [Not implemented](#not-implemented).
 
 Contents: [Layers](#layers) · [Accounts](#accounts) · [Instructions](#instructions) · [The tick loop](#the-tick-loop) · [The VM](#the-vm) · [Perps engine](#perps-engine) · [Privacy design](#privacy-design) · [Blind licensing](#blind-licensing) · [Round chat](#round-chat) · [House bankroll](#house-bankroll) · [Settlement and prizes](#settlement-and-prizes) · [Compute and program size](#compute-and-program-size) · [Local vs devnet](#local-vs-devnet) · [Full round sequence](#full-round-sequence) · [Not implemented](#not-implemented)
 
@@ -353,7 +353,7 @@ The round vault is the counterparty of every book, so what it holds decides whet
 | Prices | Mock feeds: program-owned PDAs with the exact Pyth Lazer layout, delegated to the ER. `scripts/run-round.ts` and the e2e test read real SOL, BTC, ETH prices from the devnet-tee Pyth Lazer accounts every 2 s and write them into the mock feeds every 500 ms. | Pyth Lazer accounts pushed by MagicBlock every 50-200 ms |
 | VRF queue | `Sc9MJUngNbQXSXGP3F67KvKwVnhaYn6kcioxXNVowYT`, served by two local `vrf-oracle` processes (base and ER) | `5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc` |
 | USDC | A 6-decimal test mint created by the admin | A 6-decimal test mint created by the admin (not Circle's devnet USDC) |
-| Status | Full round verified, 42/42 on the same opt-level "z" build that is deployed on devnet | Program deployed (`BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27`); full round verified 42/42 on devnet + devnet-tee; primitives verified with the spike, 32/32 |
+| Status | Full round verified, 43/43 on the same opt-level "z" build that is deployed on devnet | Program deployed (`BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27`); full round verified 42/42 on devnet + devnet-tee; primitives verified with the spike, 32/32 |
 
 ## Full round sequence
 

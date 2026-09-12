@@ -23,6 +23,7 @@ import type { AuthorMeta, WalletLicenses } from "../../lib/wallet-hooks";
 import { WalletPicker } from "../studio/identity";
 import { Button, ExtLink, Panel, PanelHeader, Skeleton } from "../ui";
 import { LicenseCard } from "./my-licenses";
+import { rpcConnection } from "../../lib/rpc";
 
 /** Close the licence yourself: settle_license takes any payer, so the buyer can run it. */
 function SettleButton({ info, round, buyer, author, token }: { info: PublicRoundInfo; round: RoundView; buyer: string; author: string; token: string }) {
@@ -37,7 +38,7 @@ function SettleButton({ info, round, buyer, author, token }: { info: PublicRound
     setError(null);
     try {
       const me = new PublicKey(buyer);
-      const tee = new Connection(tokenUrl(info.endpoints.tee, token), { commitment: "confirmed" });
+      const tee = rpcConnection(tokenUrl(info.endpoints.tee, token), { commitment: "confirmed" });
       const tx = new Transaction().add(...settleLicenseIxs(new PublicKey(info.round), new PublicKey(round.mint), me, new PublicKey(author), round.nMarkets));
       tx.feePayer = me;
       tx.recentBlockhash = (await tee.getLatestBlockhash()).blockhash;

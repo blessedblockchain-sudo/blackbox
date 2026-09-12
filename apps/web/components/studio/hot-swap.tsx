@@ -11,6 +11,7 @@ import { formatInt, shortAddr } from "../../lib/format";
 import { tokenUrl } from "../../lib/tee-auth";
 import { Badge, Button, ExtLink, Panel, PanelHeader } from "../ui";
 import type { Identity } from "./use-owner";
+import { rpcConnection } from "../../lib/rpc";
 
 type Phase = { k: "idle" } | { k: "confirm" } | { k: "sending" } | { k: "done"; res: HotSwapResponse } | { k: "error"; msg: string };
 
@@ -60,7 +61,7 @@ export function HotSwapPanel({
         res = body;
       } else {
         if (!identity.token || !signTransaction || !info.round) throw new Error("wallet not ready");
-        const conn = new Connection(tokenUrl(info.endpoints.tee, identity.token), { commitment: "confirmed" });
+        const conn = rpcConnection(tokenUrl(info.endpoints.tee, identity.token), { commitment: "confirmed" });
         const owner = new PublicKey(identity.owner);
         const tx = new Transaction().add(...setStrategyIxs(new PublicKey(info.round), owner, bytecode));
         tx.feePayer = owner;

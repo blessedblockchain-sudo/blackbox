@@ -7,7 +7,7 @@
  */
 import { BN, BorshInstructionCoder } from "@coral-xyz/anchor";
 import { ComputeBudgetProgram, PublicKey, TransactionInstruction, type AccountMeta } from "@solana/web3.js";
-import { IDL, PROGRAM_ID, entrantPda, licensePda, marketPda, strategyPda } from "./chain";
+import { IDL, PROGRAM_ID, chatPda, entrantPda, licenceMark, licensePda, marketPda, strategyPda } from "./chain";
 import { EPHEMERAL_SPL_TOKEN_PROGRAM_ID, ata, delegateBufferPda, delegationMetadataPda, delegationRecordPda, ephemeralAta, permissionPda } from "./espl";
 
 interface IdlAccount {
@@ -146,4 +146,16 @@ export function scheduleLicenseTickIx(round: PublicKey, buyer: PublicKey, author
     { payer, round, author_entrant: entrantPda(round, author), strategy: strategyPda(round, author), license: licensePda(round, buyer, author), buyer },
     remaining,
   );
+}
+
+/**
+ * ER: announce a licence in the round's public chat so it can be settled later.
+ *
+ * License accounts are private, so nobody but the buyer and the author can
+ * enumerate them — and `close_round` refuses to run while one is still open.
+ * This one line makes the (buyer, author) pair discoverable to whoever closes
+ * the round; the buyer is the signer, so the text only has to carry the author.
+ */
+export function announceLicenceIx(round: PublicKey, buyer: PublicKey, author: PublicKey): TransactionInstruction {
+  return buildIx("post_chat", { text: licenceMark(author.toBase58()) }, { author: buyer, round, chat: chatPda(round) });
 }

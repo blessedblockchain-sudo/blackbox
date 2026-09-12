@@ -4,6 +4,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { b64decode, type OwnerReadResponse, type ReadRequest } from "../../lib/api-types";
 import { decodeAccount, positionPda, strategyPda, toPositionView, toStrategyView, type PositionView, type StrategyView } from "../../lib/chain";
 import { redactToken, tokenUrl } from "../../lib/tee-auth";
+import { rpcConnection } from "../../lib/rpc";
 
 export type Identity =
   | { kind: "bot"; owner: string; name: string }
@@ -57,7 +58,7 @@ export function useOwnerReads(identity: Identity | null, round: string | null, t
       };
     };
 
-    const conn = identity.kind === "wallet" && identity.token ? new Connection(tokenUrl(tee, identity.token), { commitment: "processed" }) : null;
+    const conn = identity.kind === "wallet" && identity.token ? rpcConnection(tokenUrl(tee, identity.token), { commitment: "processed" }) : null;
     const readWallet = async (): Promise<Partial<OwnerReads>> => {
       const owner = new PublicKey(identity.owner);
       const r = new PublicKey(round);

@@ -9,6 +9,7 @@ import { Program, type Idl, type Provider } from "@coral-xyz/anchor";
 import { ComputeBudgetProgram, Connection, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import idlJson from "@blackbox/sdk/src/blackbox.idl.json";
 import { fromMicro, toNum } from "./format";
+import { rpcConnection } from "./rpc";
 
 export const IDL = idlJson as unknown as Idl;
 export const PROGRAM_ID = new PublicKey((idlJson as { address: string }).address);
@@ -89,7 +90,7 @@ let program: Program | null = null;
 function coderProgram(): Program {
   if (!program) {
     // The coder never touches the provider; a bare connection satisfies the constructor.
-    const provider = { connection: new Connection("http://127.0.0.1:1") } as unknown as Provider;
+    const provider = { connection: rpcConnection("http://127.0.0.1:1") } as unknown as Provider;
     program = new Program(IDL, provider);
   }
   return program;
@@ -475,4 +476,34 @@ export function setStrategyIxs(round: PublicKey, owner: PublicKey, bytecode: Uin
     data: Buffer.from(data),
   });
   return [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ix];
+}
+
+/**
+ * The public licence registry.
+ *
+ * A License account is private to its buyer and author, so nobody else can
+ * enumerate the licences on a round — which matters at settlement, because
+ * `close_round` refuses to run while any licence is still open. So when a
+ * visitor activates a licence the client posts one line to the round's public
+ * chat naming the author; the buyer is the message's signer. That is enough for
+ * a stranger to rebuild every (buyer, author) pair and settle them, and it
+ * reveals nothing the L1 `open_license` transaction did not already.
+ */
+export const LICENCE_MARK = "licensed:";
+
+export const licenceMark = (author: string) => `${LICENCE_MARK}${author}`;
+
+export function licencesFromChat(messages: ChatMessage[]): { buyer: string; author: string }[] {
+  const seen = new Set<string>();
+  const out: { buyer: string; author: string }[] = [];
+  for (const m of messages) {
+    if (!m.text.startsWith(LICENCE_MARK)) continue;
+    const author = m.text.slice(LICENCE_MARK.length).trim();
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(author)) continue;
+    const key = `${m.author}:${author}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ buyer: m.author, author });
+  }
+  return out;
 }

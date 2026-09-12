@@ -17,7 +17,7 @@ import { Connection, PublicKey, Transaction, type TransactionInstruction } from 
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { BackJob, JobStep, PublicRoundInfo, StepLayer } from "../../lib/api-types";
 import { PROGRAM_ID, decodeAccount, licensePda, toLicenseView, type RoundView } from "../../lib/chain";
-import { activateLicenseIx, delegateLicenseIxs, openLicenseIxs, scheduleLicenseTickIx } from "../../lib/license-ix";
+import { activateLicenseIx, announceLicenceIx, delegateLicenseIxs, openLicenseIxs, scheduleLicenseTickIx } from "../../lib/license-ix";
 import { DELEGATION_PROGRAM_ID, ata, depositSplIxs, ephemeralAta, tokenAmount } from "../../lib/espl";
 import { checkRange, formatSol, formatUsdcAmount, parseUsdcInput } from "../../lib/amount";
 import { baseTxExplorer, erTxExplorer } from "../../lib/explorer";
@@ -29,6 +29,7 @@ import { WalletPicker } from "../studio/identity";
 import { Button } from "../ui";
 import type { AuthorRow } from "./author-table";
 import { JobPanel } from "./job-steps";
+import { rpcConnection } from "../../lib/rpc";
 
 const STEPS: [string, string, StepLayer][] = [
   ["funds", "Check your wallet: SOL and the round's test USDC", "l1"],
@@ -39,6 +40,7 @@ const STEPS: [string, string, StepLayer][] = [
   ["erLicense", "Wait for the License to appear on the rollup", "wait"],
   ["activate", "activate_license: private to you and the author, margin in, fee locked", "er"],
   ["schedule", "schedule_license_tick: the crank runs the author's code on your book", "er"],
+  ["announce", "post_chat: list the licence publicly so anyone can settle it at round end", "er"],
 ];
 
 /** Rent and fees for open_license + delegate_license + the deposit: 0.0141 SOL measured on devnet. */
@@ -95,7 +97,7 @@ export function WalletBackFlow({ info, round, author, block, lock }: { info: Pub
     const authorKey = new PublicKey(author.owner);
     const validator = new PublicKey(round.validator);
     const license = licensePda(r, me, authorKey);
-    const tee = new Connection(tokenUrl(info.endpoints.tee, token), { commitment: "confirmed" });
+    const tee = rpcConnection(tokenUrl(info.endpoints.tee, token), { commitment: "confirmed" });
     const j: BackJob = {
       id: String(Date.now()),
       round: info.round,
@@ -230,6 +232,17 @@ export function WalletBackFlow({ info, round, author, block, lock }: { info: Pub
           throw new Error(
             `${e instanceof Error ? e.message : String(e)}\nThe licence is active and holds your margin, but has no crank task, so it will not trade. schedule_license_tick takes any payer, so it can be retried — press the button again.`,
           );
+        }
+      });
+      await step("announce", async () => {
+        // A License is private, so without this line nobody but you and the
+        // author can find it — and close_round will not run while it is open.
+        // Failing here costs the round nothing until settlement, so it is not
+        // worth failing the whole licence over.
+        try {
+          return { sig: await sendEr([announceLicenceIx(r, me, authorKey)]), detail: "your licence is now discoverable at settlement" };
+        } catch (e) {
+          return { skipped: true, detail: `could not post: ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}` };
         }
       });
       j.status = "done";

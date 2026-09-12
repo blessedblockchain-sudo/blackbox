@@ -15,6 +15,7 @@ import { ENDPOINTS } from "@blackbox/sdk/src/constants";
 import type { Cluster, PublicBacker, PublicEntrant, PublicLicenseRecord, PublicRoundInfo } from "./api-types";
 import { decodeAccount, roundPda, toRoundView, type RoundView } from "./chain";
 import baked from "./generated/round.json";
+import { rpcConnection } from "./rpc";
 
 export interface BakedRound {
   cluster: string;
@@ -113,7 +114,7 @@ export interface Discovered {
  */
 export async function discoverRound(base: string, fromId: number, lookahead = LOOKAHEAD): Promise<Discovered | null> {
   const ids = Array.from({ length: lookahead }, (_, i) => fromId + 1 + i);
-  const conn = new Connection(base, { commitment: "confirmed" });
+  const conn = rpcConnection(base, { commitment: "confirmed" });
   const infos = await conn.getMultipleAccountsInfo(ids.map(roundPda), "confirmed");
   for (let i = infos.length - 1; i >= 0; i--) {
     const acc = infos[i];

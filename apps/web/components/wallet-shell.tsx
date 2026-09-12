@@ -2,6 +2,7 @@
 import { useMemo, type ReactNode } from "react";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { ENDPOINTS } from "@blackbox/sdk/src/constants";
+import { rpcFetch } from "../lib/rpc";
 
 /**
  * Wallet Standard discovery only (wallets = []): Phantom, Solflare, Backpack
@@ -13,7 +14,7 @@ export function WalletShell({ children }: { children: ReactNode }) {
     return process.env.NEXT_PUBLIC_BASE_RPC ?? ENDPOINTS[c].base;
   }, []);
   return (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider endpoint={endpoint} config={{ commitment: "confirmed", fetch: rpcFetch }}>
       <WalletProvider wallets={[]} autoConnect={false}>
         {children}
       </WalletProvider>

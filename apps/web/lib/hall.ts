@@ -12,6 +12,7 @@ import type { Blackbox } from "@blackbox/sdk/src/blackbox.types";
 import { IDL } from "./chain";
 import { fromMicro, toNum } from "./format";
 import type { Cluster, HallResponse, HallRow } from "./api-types";
+import { rpcConnection } from "./rpc";
 
 export type NameMap = Map<string, { name: string; bot: boolean }>;
 
@@ -42,7 +43,7 @@ export function toHallRow(address: string, h: any, names: NameMap): HallRow {
 
 /** program.account.hall.all(): getProgramAccounts filtered on the Hall discriminator. */
 export async function fetchHallRows(cluster: Cluster, base: string, names: NameMap): Promise<HallResponse> {
-  const provider = { connection: new Connection(base, "confirmed") } as unknown as Provider;
+  const provider = { connection: rpcConnection(base, "confirmed") } as unknown as Provider;
   const program = new Program<Blackbox>(IDL as unknown as Blackbox, provider);
   const accounts = await program.account.hall.all();
   const rows = accounts.map((a) => toHallRow(a.publicKey.toBase58(), a.account, names));

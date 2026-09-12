@@ -22,6 +22,8 @@ MagicBlock primitives, all load-bearing:
 - **Ephemeral accounts**: the public round chat exists only on the rollup, sponsored by the round, and is closed before the round commits.
 - **Delegation with commit_frequency_ms = u32::MAX + scrub before commit**: private bytecode never reaches L1 in plaintext; the program refuses to commit a private account that still has a body.
 
+No keeper anywhere. The clock, settlement, ranking, prizes and the final commit all take a bare signer, so when a round's clock runs out the arena page offers any visitor's wallet the sequence that closes it — and the site is a static export with no server of ours in the path at all.
+
 ## Categories (3)
 DeFi · AI / Agents · Privacy
 

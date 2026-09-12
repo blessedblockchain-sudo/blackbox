@@ -1,9 +1,9 @@
 "use client";
 import { useMemo } from "react";
-import { useHistory, useLiveRound, useRoundInfo } from "../../lib/hooks";
+import { useChat, useHistory, useLiveRound, useRoundInfo } from "../../lib/hooks";
 import { returnPct, shortAddr, formatInt } from "../../lib/format";
 import { solvency } from "../../lib/solvency";
-import { PROGRAM_ID, type RoundView } from "../../lib/chain";
+import { PROGRAM_ID, licencesFromChat, type RoundView } from "../../lib/chain";
 import { noRoundDetail, roundInfoError } from "../../lib/messages";
 import { baseAddressExplorer, erAddressExplorer } from "../../lib/explorer";
 import type { PublicRoundInfo } from "../../lib/api-types";
@@ -14,11 +14,13 @@ import type { TileData } from "./blackbox-tile";
 import { ExtLink, Panel, PanelHeader, Skeleton } from "../ui";
 import { BoxMark } from "../site-nav";
 import { RoundChat } from "./round-chat";
+import { CloseRound, type OpenLicence } from "./close-round";
 
 export function Arena() {
   const { info, error: infoError } = useRoundInfo();
   const live = useLiveRound(info);
   const history = useHistory(info, live);
+  const chat = useChat(info);
 
   const tiles = useMemo<TileData[]>(() => {
     if (!info) return [];
@@ -65,6 +67,22 @@ export function Arena() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info, live.scoreboard, live.entrants, history.version]);
 
+  // Licences to settle at the end: the ones the round file knows about, plus any
+  // a visitor opened and announced in the public chat (see `licencesFromChat`).
+  const licences = useMemo<OpenLicence[]>(() => {
+    const out: OpenLicence[] = [];
+    const seen = new Set<string>();
+    const add = (buyer: string, author: string, source: OpenLicence["source"]) => {
+      const key = `${buyer}:${author}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ buyer, author, source });
+    };
+    for (const l of info?.licenses ?? []) add(l.buyer, l.author, "round file");
+    for (const l of licencesFromChat(chat.messages)) add(l.buyer, l.author, "round chat");
+    return out;
+  }, [info, chat.messages]);
+
   const beacon = useMemo(() => {
     const r = live.round;
     const deposits = live.scoreboard ? live.scoreboard.entries.map((e) => e.deposited) : Object.values(live.entrants).map((e) => e.deposited);
@@ -83,6 +101,7 @@ export function Arena() {
   return (
     <div className="flex flex-col gap-3">
       <RoundState info={info} round={live.round} />
+      <CloseRound info={info} round={live.round} owners={tiles.map((t) => t.owner)} licences={licences} />
       <RoundHeader info={info} round={live.round} solvency={beacon} latencyMs={live.latencyMs} status={live.status} />
       <MarketStrip names={info.markets} markets={live.markets} mystery={live.round.vrfReady ? live.round.mysteryMarket : null} />
       <Panel>

@@ -20,6 +20,7 @@ import { decodeAccount, licensePda, scoreboardPda, toLicenseView, toScoreboardVi
 import { DELEGATION_PROGRAM_ID, ata, ephemeralAta, tokenAmount } from "./espl";
 import { shortAddr } from "./format";
 import { redactToken, tokenUrl } from "./tee-auth";
+import { rpcConnection } from "./rpc";
 
 // ------------------------------------------------------------------ balances
 
@@ -55,10 +56,10 @@ export function useWalletFunds(info: PublicRoundInfo | null, owner: string | nul
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setState((p) => ({ ...p, loading: true }));
-    const conn = new Connection(base, { commitment: "confirmed" });
+    const conn = rpcConnection(base, { commitment: "confirmed" });
     const me = new PublicKey(owner);
     const mintKey = new PublicKey(mint);
-    const teeConn = token && tee ? new Connection(tokenUrl(tee, token), { commitment: "processed" }) : null;
+    const teeConn = token && tee ? rpcConnection(tokenUrl(tee, token), { commitment: "processed" }) : null;
 
     const load = async () => {
       try {
@@ -110,7 +111,7 @@ export function useAuthors(info: PublicRoundInfo | null, ms = 10_000): AuthorMet
     if (!round || !tee) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const conn = new Connection(tee, { commitment: "processed" });
+    const conn = rpcConnection(tee, { commitment: "processed" });
     const key = scoreboardPda(new PublicKey(round));
     const load = async () => {
       try {
@@ -196,8 +197,8 @@ export function useWalletLicenses(info: PublicRoundInfo | null, owner: string | 
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setState((p) => ({ ...p, status: p.rows.length ? p.status : "loading" }));
-    const conn = new Connection(base, { commitment: "confirmed" });
-    const teeConn = token && tee ? new Connection(tokenUrl(tee, token), { commitment: "processed" }) : null;
+    const conn = rpcConnection(base, { commitment: "confirmed" });
+    const teeConn = token && tee ? rpcConnection(tokenUrl(tee, token), { commitment: "processed" }) : null;
     const r = new PublicKey(round);
     const buyer = new PublicKey(owner);
     const keys = authors.map((a) => licensePda(r, buyer, new PublicKey(a.owner)));

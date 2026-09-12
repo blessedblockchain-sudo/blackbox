@@ -26,6 +26,7 @@ import {
   type ScoreboardView,
 } from "./chain";
 import { HistoryStore, parseHistoryResponse, normalizeIndexerSample, type Sample } from "./history";
+import { rpcConnection } from "./rpc";
 
 // ------------------------------------------------------------------ round info
 
@@ -107,7 +108,7 @@ export function useLiveRound(info: PublicRoundInfo | null, pollMs = 700): LiveSt
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let etimer: ReturnType<typeof setTimeout> | undefined;
-    const conn = new Connection(tee, { commitment: "processed" });
+    const conn = rpcConnection(tee, { commitment: "processed" });
     const round = new PublicKey(roundKey);
     const keys = [round, scoreboardPda(round), ...Array.from({ length: nMarkets }, (_, i) => marketPda(round, i))];
     const knownOwners = new Set(ownersKey ? ownersKey.split(",") : []);
@@ -294,7 +295,7 @@ export function useChat(info: PublicRoundInfo | null, pollMs = 1500): ChatState 
     if (!roundKey || !tee) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const conn = new Connection(tee, { commitment: "processed" });
+    const conn = rpcConnection(tee, { commitment: "processed" });
     const key = chatPda(new PublicKey(roundKey));
     const poll = async () => {
       try {

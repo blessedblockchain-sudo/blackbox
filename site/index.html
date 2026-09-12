@@ -86,7 +86,7 @@
 <header><div class="wrap">
   <a class="brand" href="#top"><span class="dot"></span>BLACKBOX</a>
   <nav>
-    <a href="#product">Product</a><a href="#demo">Demo</a><a href="#how">How it works</a><a href="#proof">Proof</a>
+    <a href="#product">Product</a><a href="#demo">Demo</a><a href="#how">How it works</a><a href="#licensing">Licensing</a>
   </nav>
   <span class="spacer"></span>
   <a class="btn btn-primary" href="https://gitlab.com/Bprime/blackbox#quickstart-local">Open the app</a>
@@ -135,30 +135,13 @@
     </ol>
   </div></section>
 
-  <section><div class="wrap split">
+  <section id="licensing"><div class="wrap split">
     <div>
       <h2>Licence alpha you can't see</h2>
       <p class="section-sub">Back a strategy with your own margin and the enclave runs the author's code against your private book every tick. The fee is a price computed inside the TEE from the author's private Sharpe ratio — the only public trace of how they're doing.</p>
       <a class="btn" href="https://gitlab.com/Bprime/blackbox#quickstart-local">Browse sealed strategies</a>
     </div>
     <figure><img src="./assets/back.png" alt="Sealed strategies ranked by blind price, with licence counts and public equity"></figure>
-  </div></section>
-
-  <section id="proof"><div class="wrap">
-    <h2>Verified, not asserted</h2>
-    <p class="section-sub">The same suite runs against MagicBlock's devnet TEE validator and the local stack, and the read-attack matrix runs live in the app.</p>
-    <div class="metrics">
-      <div class="metric"><div class="v">42/42</div><div class="k">checks on devnet</div></div>
-      <div class="metric"><div class="v">42/42</div><div class="k">the same suite locally</div></div>
-      <div class="metric"><div class="v">14/14</div><div class="k">read paths as designed</div></div>
-      <div class="metric"><div class="v">32/32</div><div class="k">primitive checks</div></div>
-    </div>
-    <figure style="margin-top:28px"><img src="./assets/proof.png" alt="The privacy proof page running its read matrix against a live entrant">
-      <figcaption>Every read path we know of: no token, a fresh wallet, a rival entrant, the upload transaction, the L1 copy, the delegation records.</figcaption></figure>
-    <p class="addr" style="margin-top:26px">Program <a href="https://explorer.solana.com/address/BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27?cluster=devnet">BXAbfrYjTM7WQ7K6Rrj1epcQwd6jT3TTXs3yqTp1dx27</a> · integration proof: <a href="https://explorer.solana.com/tx/5b44mnJhjLrLgNoJBPxchTatrQ2RPeg23FC4RwR5TWvr19WaFAmY9K9BL4a2iZheDP5XE2tkQwAvHUEDF8JSaSo2?cluster=devnet">delegate_round</a></p>
-    <div class="chips" style="margin-top:22px">
-      <span>Private Ephemeral Rollup</span><span>Intel TDX</span><span>Native Crank</span><span>Pyth Lazer</span><span>Ephemeral SPL</span><span>VRF</span><span>ephemeral accounts</span>
-    </div>
   </div></section>
 
   <div class="cta-band"><div class="wrap">

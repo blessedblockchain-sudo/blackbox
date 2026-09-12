@@ -62,6 +62,7 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
   const backer = Keypair.generate();
   const house = Keypair.generate();
   let taskBase = 0;
+  let hotSwapSig = "";
   const names =["momentum", "meanReversion", "breakout", "randomWalk", "alwaysLong", "degen"];
   const codes = users.map((_, i) => strategies.BUILTIN_STRATEGIES[names[i % names.length]](0));
   let mint: PublicKey;
@@ -307,6 +308,7 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
       if (!swapped && tick >= DURATION / 3) {
         // entrant 0 hot-swaps from momentum to mean reversion mid-round
         const sig = await bx.setStrategy(round, users[0], strategies.meanReversion(0, 1500));
+        hotSwapSig = sig;
         codes[0] = strategies.meanReversion(0, 1500);
         swapped = true;
         rec("hot-swap mid-round (entrant 0)", true, `tick ${tick} ${sig.slice(0, 16)}`);
@@ -384,6 +386,23 @@ describe(`BLACKBOX e2e round on ${CLUSTER}`, function () {
       `${back.size}/${keys.length} in ${Math.round((Date.now() - t0) / 1000)}s${missing.length ? `, missing ${missing.join(",")}` : ""}`,
     );
     rec("private accounts on L1 are all zeros after undelegation", allZero && back.size === keys.length);
+    // The upload transaction must stay redacted after settlement: the ephemeral
+    // permission is deliberately left open so rollup history keeps hiding the
+    // bytecode a stranger would otherwise be able to replay.
+    const strangerTee = await bx.tee(stranger);
+    const redacted = await strangerTee.getTransaction(hotSwapSig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 }).catch(() => null);
+    const msg: any = redacted?.transaction?.message ?? null;
+    const sizes: number[] = [
+      ...((msg?.compiledInstructions ?? []) as any[]).map((ix) => (ix.data ? Buffer.from(ix.data).length : 0)),
+      ...((msg?.instructions ?? []) as any[]).map((ix) => (typeof ix.data === "string" ? ix.data.length : 0)),
+    ];
+    const biggest = sizes.length ? Math.max(...sizes) : 0;
+    rec(
+      "settled round: the upload transaction stays redacted to a stranger",
+      biggest < 40,
+      redacted ? `${sizes.length} instructions, largest ${biggest} bytes of data` : "not visible at all",
+    );
+
     const e0 = await bx.program.account.entrant.fetch(pda.entrantPda(round, users[0].publicKey));
     const expected = createHash("sha256").update(Buffer.from(codes[0])).digest();
     rec("published strategy hash matches final bytecode", Buffer.from(e0.strategyHash).equals(expected), Buffer.from(e0.strategyHash).toString("hex").slice(0, 16));

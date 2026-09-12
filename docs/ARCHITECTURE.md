@@ -89,7 +89,7 @@ Signer names are the account names in the instruction's `Accounts` struct. "Anyo
 | `close_chat` | admin | round not live and not `Open` | Closes the chat account and refunds its rent to the Round, before `close_round` commits. |
 | `seed_vault(amount)` | any funder | status `Open` or `Live`; `amount > 0` | Moves USDC from the funder's ER token account into the round vault and adds it to `vault_balance` (the public solvency beacon). |
 | `sweep_vault` | admin | status `Settling`, prizes paid, every entrant settled, `open_licenses == 0` | Sends the whole remaining vault balance to a token account of the admin's choice; sets `vault_balance` and `pot` to 0. |
-| `settle_entrant` | anyone | status `Settling`, entrant not settled | Final close, USDC flows, hash publication, scrub, permission close. Described below. |
+| `settle_entrant` | anyone | status `Settling`, entrant not settled | Final close, USDC flows, hash publication, scrub (permissions stay open). Described below. |
 | `undelegate_entrant` | anyone | entrant settled; Strategy and Position bodies all zero | Commits and undelegates Entrant, Strategy, Position. |
 | `rank_round` | anyone | status `Settling`, every entrant settled, not finalized | Ranks by return on deposit; sets `finalized`. |
 | `pay_prizes` | anyone | scoreboard finalized, not yet paid; remaining accounts are the winners' token accounts in rank order | Pays the prize split from the vault. |
@@ -255,7 +255,7 @@ so `LONG 0 10000` asks for the maximum the market allows and `LONG 0 3000` on a 
 
 **`commit_frequency_ms = u32::MAX`.** Every delegation in the program (`NEVER_AUTO_COMMIT_MS`) disables timer commits, so the ER never writes a private account back to L1 on its own. The spike verified that a secret written on the ER does not appear in the L1 copy.
 
-**Scrub before commit.** `settle_entrant` zeroes every byte after the discriminator of Strategy and Position (`privacy::scrub`), then closes both permissions (rent returns to the PDAs). Closing first matters: the spike found that a permission survives `commit_and_undelegate` and keeps enforcing privacy after re-delegation, but blocks creating a new one.
+**Scrub before commit.** `settle_entrant` zeroes every byte after the discriminator of Strategy and Position (`privacy::scrub`) and leaves both permissions open. The permission redacts more than the account: it also hides the message of every rollup transaction that touched it, so closing it at settlement would expose the `set_strategy` uploads in rollup history to anyone with a TEE token. Nothing needs to recreate these permissions, because Strategy and Position PDAs carry the round key in their seeds and are never re-delegated. The spike's finding still holds — a permission survives `commit_and_undelegate` and keeps enforcing privacy, but blocks creating a new one on the same account.
 
 **The undelegate guard.** `undelegate_entrant` refuses to run unless the entrant is settled and both private bodies are all zeros. A bug elsewhere cannot commit a live strategy to L1 through this path.
 
@@ -324,7 +324,7 @@ The round vault is the counterparty of every book, so what it holds decides whet
    - profit: `min(realized_pnl, vault balance - pot)` from the vault to custody (the pot is reserved for prizes);
    - then the whole custody balance to the owner's token account.
 3. Write `sha256(final bytecode)` and the final equity to the Entrant and Scoreboard; mark the entrant settled and not alive.
-4. Scrub Strategy and Position; close their permissions.
+4. Scrub Strategy and Position; leave their permissions in place so the uploads stay redacted.
 
 `undelegate_entrant` then commits and undelegates the Entrant and the scrubbed Strategy and Position.
 

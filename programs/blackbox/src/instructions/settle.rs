@@ -2,8 +2,9 @@
 //!
 //! 1. `settle_entrant`     (ER, per entrant) close legs at final marks, move
 //!                         real USDC between custody and vault, hand the rest
-//!                         to the owner's ATA, publish the strategy hash, scrub
-//!                         the private accounts and close their permissions.
+//!                         to the owner's ATA, publish the strategy hash and scrub
+//!                         the private accounts (their permissions stay open, so the
+//!                         transactions that carried the bytecode stay redacted).
 //! 2. `undelegate_entrant` (ER) commit + undelegate the (scrubbed) accounts.
 //! 3. `rank_round`         (ER) rank by return on deposit once everyone settled.
 //! 4. `pay_prizes`         (ER) pot to the top three from the vault.
@@ -21,7 +22,7 @@ use solana_sha256_hasher::hashv;
 use crate::constants::*;
 use crate::errors::BlackboxError;
 use crate::perps;
-use crate::privacy::{self, PermissionAccounts};
+use crate::privacy;
 use crate::state::*;
 
 /// Prize split of the pot after protocol fee, in bps: 1st, 2nd, 3rd.
@@ -181,42 +182,13 @@ pub fn settle_entrant<'info>(ctx: Context<'info, SettleEntrant<'info>>) -> Resul
     }
     ctx.accounts.round.settled_count = ctx.accounts.round.settled_count.saturating_add(1);
 
-    // 4) Scrub private bodies, then close their permissions (rent back to the PDAs).
-    let strat_info = ctx.accounts.strategy.to_account_info();
-    let pos_info = ctx.accounts.position.to_account_info();
-    privacy::scrub(&strat_info)?;
-    privacy::scrub(&pos_info)?;
-    let sperm = ctx.accounts.strategy_permission.to_account_info();
-    let pperm = ctx.accounts.position_permission.to_account_info();
-    let vault = ctx.accounts.ephemeral_vault.to_account_info();
-    let magic = ctx.accounts.magic_program.to_account_info();
-    let perm_prog = ctx.accounts.permission_program.to_account_info();
-    let sbump = [ctx.bumps.strategy];
-    let sseeds: &[&[u8]] = &[STRATEGY_SEED, round_key.as_ref(), owner_key.as_ref(), &sbump];
-    privacy::close_permission(
-        &PermissionAccounts {
-            sponsor: &strat_info,
-            target: &strat_info,
-            permission: &sperm,
-            ephemeral_vault: &vault,
-            magic_program: &magic,
-            permission_program: &perm_prog,
-        },
-        &[sseeds],
-    )?;
-    let pbump = [ctx.bumps.position];
-    let pseeds: &[&[u8]] = &[POSITION_SEED, round_key.as_ref(), owner_key.as_ref(), &pbump];
-    privacy::close_permission(
-        &PermissionAccounts {
-            sponsor: &pos_info,
-            target: &pos_info,
-            permission: &pperm,
-            ephemeral_vault: &vault,
-            magic_program: &magic,
-            permission_program: &perm_prog,
-        },
-        &[pseeds],
-    )?;
+    // 4) Scrub the private bodies. The permissions stay open on purpose: they
+    // also redact the transactions that carried the bytecode, so closing them
+    // here would expose every past set_strategy in rollup history. Strategy and
+    // Position PDAs are per-round (the round key is in their seeds), so nothing
+    // ever needs to recreate these permissions.
+    privacy::scrub(&ctx.accounts.strategy.to_account_info())?;
+    privacy::scrub(&ctx.accounts.position.to_account_info())?;
     Ok(())
 }
 

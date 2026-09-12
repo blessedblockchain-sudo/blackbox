@@ -505,20 +505,11 @@ pub fn settle_license<'info>(ctx: Context<'info, SettleLicense<'info>>) -> Resul
         ctx.accounts.round.open_licenses = ctx.accounts.round.open_licenses.saturating_sub(1);
     }
 
-    // Scrub, then drop the permission.
-    let li = ctx.accounts.license.to_account_info();
-    privacy::scrub(&li)?;
-    privacy::close_permission(
-        &PermissionAccounts {
-            sponsor: &li,
-            target: &li,
-            permission: &ctx.accounts.permission.to_account_info(),
-            ephemeral_vault: &ctx.accounts.ephemeral_vault.to_account_info(),
-            magic_program: &ctx.accounts.magic_program.to_account_info(),
-            permission_program: &ctx.accounts.permission_program.to_account_info(),
-        },
-        &[lseeds],
-    )?;
+    // Scrub the body. The permission stays open: it also redacts the rollup
+    // transactions of this licence, and the PDA is per-round, so it is never
+    // recreated.
+    privacy::scrub(&ctx.accounts.license.to_account_info())?;
+
     emit!(LicenseSettled { round: round_key, buyer, author, fees_paid: fee_paid, returned: rest });
     Ok(())
 }

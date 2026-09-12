@@ -1,0 +1,33 @@
+# Keeps a live round on the arena across logouts and reboots.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/blackbox-rounds.service ~/.config/systemd/user/
+#   sed -i "s|%WORKDIR%|$PWD|" ~/.config/systemd/user/blackbox-rounds.service
+#   loginctl enable-linger "$USER"          # run without an active login session
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now blackbox-rounds
+#
+#   systemctl --user status blackbox-rounds
+#   journalctl --user -u blackbox-rounds -f
+#   systemctl --user stop blackbox-rounds
+[Unit]
+Description=BLACKBOX: keep a live round on devnet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%WORKDIR%
+Environment=HOURS=12
+Environment=TICK_MS=500
+Environment=CLUSTER=devnet
+# pnpm and solana live in the user's own paths, not the system ones.
+Environment=PATH=%h/.local/share/pnpm:%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%WORKDIR%/scripts/keep-live.sh
+Restart=always
+RestartSec=60
+# A round can take many hours; never kill it for being slow.
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target

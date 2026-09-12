@@ -98,8 +98,18 @@ export function staticRoundInfo(): PublicRoundInfo {
   };
 }
 
-/** How many Round PDAs after the baked one to probe. One getMultipleAccounts call. */
+/** Round PDAs probed per batch. One getMultipleAccounts call each. */
 const LOOKAHEAD = 8;
+
+/**
+ * How many batches to walk forward before giving up.
+ *
+ * Rounds are created one after another for as long as a runner is up, so a site
+ * built weeks ago has to be able to find round 60 from a baked round 6. Walking
+ * costs one batched read per 8 ids and stops at the first entirely empty batch,
+ * so the usual case is a single request.
+ */
+const MAX_BATCHES = 24;
 
 export interface Discovered {
   roundId: number;
@@ -113,17 +123,24 @@ export interface Discovered {
  * a single batch. Returns the newest round that decodes, or null.
  */
 export async function discoverRound(base: string, fromId: number, lookahead = LOOKAHEAD): Promise<Discovered | null> {
-  const ids = Array.from({ length: lookahead }, (_, i) => fromId + 1 + i);
   const conn = rpcConnection(base, { commitment: "confirmed" });
-  const infos = await conn.getMultipleAccountsInfo(ids.map(roundPda), "confirmed");
-  for (let i = infos.length - 1; i >= 0; i--) {
-    const acc = infos[i];
-    if (!acc) continue;
+  const present: { id: number; data: Uint8Array }[] = [];
+  let from = fromId;
+  for (let batch = 0; batch < MAX_BATCHES; batch++) {
+    const ids = Array.from({ length: lookahead }, (_, i) => from + 1 + i);
+    const infos = await conn.getMultipleAccountsInfo(ids.map(roundPda), "confirmed");
+    infos.forEach((acc, i) => acc && present.push({ id: ids[i], data: acc.data }));
+    // Ids are handed out in order, so an entirely empty batch is the end.
+    if (infos.every((a) => !a)) break;
+    from += lookahead;
+  }
+  // Newest first, falling back to older ids when one does not decode — that is
+  // a round left over from a different program build.
+  for (let i = present.length - 1; i >= 0; i--) {
     try {
-      const view = toRoundView(decodeAccount("round", acc.data));
-      return { roundId: ids[i], round: roundPda(ids[i]).toBase58(), view };
+      return { roundId: present[i].id, round: roundPda(present[i].id).toBase58(), view: toRoundView(decodeAccount("round", present[i].data)) };
     } catch {
-      // A round from another program build: keep looking at older ids.
+      // keep looking
     }
   }
   return null;
